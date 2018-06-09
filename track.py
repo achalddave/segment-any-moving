@@ -22,7 +22,9 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-MATCH_SIMILARITY_THRESHOLD = 0.1
+MATCH_COST_THRESHOLD = 0.01
+
+DISTANCE_WEIGHT = 1
 
 
 class Detection():
@@ -50,46 +52,31 @@ class Track():
             return None
 
 
-def iou(box_first, box_second):
-    """
-    >>> iou([0, 0, 4, 4], [1, 1, 4, 4])
-    0.5625
-    """
-    x_start0, y_start0, x_end0, y_end0 = box_first
-    x_start1, y_start1, x_end1, y_end1 = box_second
-
-    w_intersection = min(y_end0, y_end1) - max(y_start0, y_start1)
-    h_intersection = min(x_end0, x_end1) - max(x_start0, x_start1)
-    if w_intersection < 0 or h_intersection < 0:
-        return 0
-    intersection_area = w_intersection * h_intersection
-
-    w_union = min(y_start0, y_start1) - max(y_end0, y_end1)
-    h_union = min(x_start0, x_start1) - max(x_end0, x_end1)
-    union_area = w_union * h_union
-
-    return intersection_area / union_area
+def compute_area(box):
+    return (box[2] - box[0]) * (box[3] - box[1])
 
 
-def track_similarity(track, detection):
+def track_distance(track, detection):
     track_box = track.detections[-1].box
     detection_box = detection.box
-    return iou(track_box, detection_box)
+    area = compute_area(track_box)
+    distance_cost = (
+        max([abs(p1 - p0) for p0, p1 in zip(track_box, detection_box)]) / area)
+    return  DISTANCE_WEIGHT * distance_cost
 
 
-def match_detections(tracks, detections, threshold=0.5):
+def match_detections(tracks, detections, threshold):
     matched_tracks = [None for _ in detections]
     left_indices = set(range(len(detections)))
     tracks = sorted(tracks, key=lambda t: t.last_timestamp(), reverse=True)
     for track in tracks:
-        similarities = [np.float('-inf') for _ in detections]
+        distances = [np.float('inf') for _ in detections]
         for i in left_indices:
-            similarities[i] = track_similarity(track, detections[i])
-        best_match = np.argmax(similarities)
-        print('Best distance: %s' % max(similarities))
-        if similarities[best_match] >= threshold:
-            left_indices.remove(best_match)
+            distances[i] = track_distance(track, detections[i])
+        best_match = np.argmin(distances)
+        if distances[best_match] <= threshold:
             matched_tracks[best_match] = track
+            left_indices.remove(best_match)
     return matched_tracks
 
 
@@ -167,7 +154,7 @@ def main():
         matched_tracks = match_detections(
             tracks,
             detections,
-            threshold=MATCH_SIMILARITY_THRESHOLD)
+            threshold=MATCH_COST_THRESHOLD)
         # print('Timestamp: %s, Num matched tracks: %s' %
         #       (timestamp, len([x for x in matched_tracks if x is not None])))
 
