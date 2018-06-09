@@ -137,7 +137,7 @@ def main():
     tracks = []
     track_id = 0
     images = []
-    for timestamp, image_name in enumerate(tqdm(frames[:150])):
+    for timestamp, image_name in enumerate(tqdm(frames)):
         image = cv2.imread(
             os.path.join(args.images_dir, image_name + args.extension))
         image = image[:, :, ::-1]  # BGR -> RGB
