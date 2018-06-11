@@ -22,7 +22,7 @@ def main():
 
     output = {}
     for file in files:
-        with open(file, 'rb') as f:
+        with open(os.path.join(args.input_directory, file), 'rb') as f:
             output[file[:-len(args.extension)]] = pickle.load(f)
             print(file[:-len(args.extension)])
 
