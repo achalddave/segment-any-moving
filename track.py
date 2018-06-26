@@ -7,12 +7,15 @@ import pickle
 import cv2
 import numpy as np
 import PIL
+import pycocotools.mask as mask_util
+import skimage.color
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
 
 import utils.vis as vis
 from utils.colors import colormap
 from utils.datasets import get_classes
+from utils.distance import chi_square_distance, intersection_distance
 
 # Detection confidence threshold for starting a new track
 NEW_TRACK_THRESHOLD = 0.9
@@ -22,24 +25,73 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-MATCH_COST_THRESHOLD = 0.01
-
-DISTANCE_WEIGHT = 1
+SPATIAL_DISTANCE_THRESHOLD = 0.01
+HISTOGRAM_THRESHOLD = 0.05  # Use ~1.4 for histogram intersection
 
 
 class Detection():
-    def __init__(self, box, score, label, timestamp):
-        self.box = box
+    def __init__(self, box, score, label, timestamp, image=None, mask=None):
+        self.box = box  # (x1, y1, x2, y2)
         self.score = score
         self.label = label
         self.timestamp = timestamp
+        self.image = image
+        self.mask = mask
         self.track = None
+
+    def contour_moments(self):
+        if not hasattr(self, '_contour_moments'):
+            self._contour_moments = cv2.moments(self.decoded_mask())
+        return self._contour_moments
+
+    def compute_center(self):
+        moments = self.contour_moments()
+        # See
+        # <https://docs.opencv.org/3.1.0/dd/d49/tutorial_py_contour_features.html>
+        cx = int(moments['m10'] / moments['m00'])
+        cy = int(moments['m01'] / moments['m00'])
+        self.center = np.asarray([cx, cy])
+        return self.center
+
+    def compute_area(self):
+        x0, y0, x1, y1 = self.box
+        return (x1 - x0) * (y1 - y0)  # self.contour_moments()['m00']
+
+    def decoded_mask(self):
+        return mask_util.decode(self.mask)
+
+    def compute_histogram(self):
+        # Compute histogram in LAB space, as in
+        #     Xiao, Jianxiong, et al. "Sun database: Large-scale scene
+        #     recognition from abbey to zoo." Computer vision and pattern
+        #     recognition (CVPR), 2010 IEEE conference on. IEEE, 2010.
+        # https://www.cc.gatech.edu/~hays/papers/sun.pdf
+        if hasattr(self, 'mask_histogram'):
+            return self.mask_histogram, self.mask_histogram_edges
+        # (num_pixels, num_channels)
+        mask_pixels = self.image[np.nonzero(self.decoded_mask())]
+        # rgb2lab expects a 3D tensor with colors in the last dimension, so
+        # just add a fake dimension.
+        mask_pixels = mask_pixels[np.newaxis]
+        mask_pixels = skimage.color.rgb2lab(mask_pixels)[0]
+        # TODO(achald): Check if the range for LAB is correct.
+        self.mask_histogram, self.mask_histogram_edges = np.histogramdd(
+            mask_pixels,
+            bins=[4, 14, 14],
+            range=[[0, 100], [-127, 128], [-127, 128]],
+            normed=True)
+        # normalizer = self.mask_histogram.sum()
+        # if normalizer == 0:
+        #     normalizer = 1
+        # self.mask_histogram /= normalizer
+        return self.mask_histogram, self.mask_histogram_edges
 
 
 class Track():
     def __init__(self, track_id):
         self.detections = []
         self.id = track_id
+        self.velocity = None
 
     def add_detection(self, detection, timestamp):
         detection.track = self
@@ -52,29 +104,64 @@ class Track():
             return None
 
 
-def compute_area(box):
+def compute_bbox_area(box):
     return (box[2] - box[0]) * (box[3] - box[1])
 
 
 def track_distance(track, detection):
-    track_box = track.detections[-1].box
-    detection_box = detection.box
-    area = compute_area(track_box)
-    distance_cost = (
-        max([abs(p1 - p0) for p0, p1 in zip(track_box, detection_box)]) / area)
-    return  DISTANCE_WEIGHT * distance_cost
+    if len(track.detections) > 2:
+        history = min(len(track.detections) - 1, 5)
+        centers = np.asarray(
+            [x.compute_center() for x in track.detections[-history:]])
+        velocities = centers[1:] - centers[:-1]
+        predicted_box = track.detections[-1].box
+        if False and np.all(
+                np.std(velocities, axis=0) < 0.1 *
+                track.detections[-1].compute_area()):
+            track.velocity = np.mean(velocities, axis=0)
+            predicted_center = centers[-1] + track.velocity
+        else:
+            predicted_center = centers[-1]
+    else:
+        predicted_box = track.detections[-1].box
+        predicted_center = track.detections[-1].compute_center()
+    area = track.detections[-1].compute_area()
+    return (max([abs(p1 - p0)
+                 for p0, p1 in zip(predicted_box, detection.box)]) / area)
+    # return np.linalg.norm(
+    #     (predicted_center - detection.compute_center()), 2) / area
 
 
-def match_detections(tracks, detections, threshold):
+def match_detections(tracks, detections):
     matched_tracks = [None for _ in detections]
     left_indices = set(range(len(detections)))
+    # Tracks sorted by most recent to oldest.
     tracks = sorted(tracks, key=lambda t: t.last_timestamp(), reverse=True)
+    sorted_indices = sorted(
+        range(len(detections)),
+        key=lambda index: detections[index].score,
+        reverse=True)
     for track in tracks:
-        distances = [np.float('inf') for _ in detections]
-        for i in left_indices:
-            distances[i] = track_distance(track, detections[i])
-        best_match = np.argmin(distances)
-        if distances[best_match] <= threshold:
+        best_histogram_distance = np.float('inf')
+        best_match = None
+        track_histogram = track.detections[-1].compute_histogram()[0]
+        # track_histogram = np.sum(
+        #     x.compute_histogram()[0] for x in track.detections)
+        # if track_histogram.sum() != 0:
+        #     track_histogram = track_histogram / track_histogram.sum()
+        for i in sorted_indices:
+            if i not in left_indices:
+                continue
+            spatial_distance = track_distance(track, detections[i])
+            if (spatial_distance < SPATIAL_DISTANCE_THRESHOLD):
+                distance = chi_square_distance(
+                    track.detections[-1].compute_histogram()[0],
+                    detections[i].compute_histogram()[0])
+                if distance < best_histogram_distance:
+                    best_histogram_distance = distance
+                    best_match = i
+        if (best_match is not None
+                and best_histogram_distance < HISTOGRAM_THRESHOLD):
             matched_tracks[best_match] = track
             left_indices.remove(best_match)
     return matched_tracks
@@ -100,7 +187,28 @@ def visualize_detections(image,
         color = [int(x) for x in colors[detection.track.id % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
-        image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=3)
+        cx, cy = detection.compute_center()
+        # image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=3)
+        # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
+        if detection.track.velocity is not None:
+            vx, vy = detection.track.velocity
+            # Expand for visualization
+            vx *= 2
+            vy *= 2
+            print('Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
+            cv2.arrowedLine(
+                image, (int(cx), int(cy)), (int(cx + vx), int(cy + vy)),
+                color=color,
+                thickness=3,
+                tipLength=1.0)
+        else:
+            cv2.circle(image, (cx, cy), radius=3, thickness=1, color=color)
+        image = vis.vis_mask(
+            image,
+            detection.decoded_mask(),
+            color=color,
+            alpha=0.1,
+            border_thick=3)
 
         label_str = '({track}) {label}: {score}'.format(
             track=detection.track.id,
@@ -113,7 +221,6 @@ def visualize_detections(image,
 
 def main():
     # Use first line of file docstring as description if it exists.
-    argparse
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -142,19 +249,16 @@ def main():
             os.path.join(args.images_dir, image_name + args.extension))
         image = image[:, :, ::-1]  # BGR -> RGB
         image_data = data[image_name]
-        boxes, _, _, labels = vis.convert_from_cls_format(
+        boxes, masks, _, labels = vis.convert_from_cls_format(
             image_data['boxes'], image_data['segmentations'],
             image_data['keypoints'])
 
         detections = [
-            Detection(box[:4], box[4], label, timestamp)
-            for box, label in zip(boxes, labels)
-            if box[4] > CONTINUE_TRACK_THRESHOLD and label == 1  # person
+            Detection(box[:4], box[4], label, timestamp, image, mask)
+            for box, mask, label in zip(boxes, masks, labels)
+            if box[4] > CONTINUE_TRACK_THRESHOLD  #  and label == 1  # person
         ]
-        matched_tracks = match_detections(
-            tracks,
-            detections,
-            threshold=MATCH_COST_THRESHOLD)
+        matched_tracks = match_detections(tracks, detections)
         # print('Timestamp: %s, Num matched tracks: %s' %
         #       (timestamp, len([x for x in matched_tracks if x is not None])))
 
