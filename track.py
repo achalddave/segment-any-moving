@@ -25,8 +25,21 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-SPATIAL_DISTANCE_THRESHOLD = 0.01
-HISTOGRAM_THRESHOLD = 0.05  # Use ~1.4 for histogram intersection
+SPATIAL_DISTANCE_THRESHOLD = 0.005
+HISTOGRAM_THRESHOLD = 0.5  # Use ~1.4 for histogram intersection
+
+
+def decay_weighted_mean(values, sigma=5):
+    """Weighted mean that focuses on most recent values.
+
+    values[-i] is weighted by np.exp(i / sigma). Higher sigma weights older
+    values more heavily.
+
+    values (array-like): Values arranged from oldest to newest. values[-1] is
+        weighted most heavily, values[0] is weighted least.
+    """
+    weights = np.exp([-i / sigma for i in range(len(values))])[::-1]
+    return np.average(values, weights=weights)
 
 
 class Detection():
@@ -54,8 +67,11 @@ class Detection():
         return self.center
 
     def compute_area(self):
+        return self.contour_moments()['m00']
+
+    def compute_area_bbox(self):
         x0, y0, x1, y1 = self.box
-        return (x1 - x0) * (y1 - y0)  # self.contour_moments()['m00']
+        return (x1 - x0) * (y1 - y0)
 
     def decoded_mask(self):
         return mask_util.decode(self.mask)
@@ -78,12 +94,11 @@ class Detection():
         self.mask_histogram, self.mask_histogram_edges = np.histogramdd(
             mask_pixels,
             bins=[4, 14, 14],
-            range=[[0, 100], [-127, 128], [-127, 128]],
-            normed=True)
-        # normalizer = self.mask_histogram.sum()
-        # if normalizer == 0:
-        #     normalizer = 1
-        # self.mask_histogram /= normalizer
+            range=[[0, 100], [-127, 128], [-127, 128]])
+        normalizer = self.mask_histogram.sum()
+        if normalizer == 0:
+            normalizer = 1
+        self.mask_histogram /= normalizer
         return self.mask_histogram, self.mask_histogram_edges
 
 
@@ -117,7 +132,7 @@ def track_distance(track, detection):
         predicted_box = track.detections[-1].box
         if False and np.all(
                 np.std(velocities, axis=0) < 0.1 *
-                track.detections[-1].compute_area()):
+                track.detections[-1].compute_area_bbox()):
             track.velocity = np.mean(velocities, axis=0)
             predicted_center = centers[-1] + track.velocity
         else:
@@ -125,11 +140,12 @@ def track_distance(track, detection):
     else:
         predicted_box = track.detections[-1].box
         predicted_center = track.detections[-1].compute_center()
-    area = track.detections[-1].compute_area()
-    return (max([abs(p1 - p0)
-                 for p0, p1 in zip(predicted_box, detection.box)]) / area)
-    # return np.linalg.norm(
-    #     (predicted_center - detection.compute_center()), 2) / area
+    area = decay_weighted_mean([x.compute_area_bbox() for x in track.detections])
+    target_area = detection.compute_area_bbox()
+    # return (max([abs(p1 - p0)
+    #              for p0, p1 in zip(predicted_box, detection.box)]) / area)
+    return (np.linalg.norm(
+        (predicted_center - detection.compute_center()), 2) / area)
 
 
 def match_detections(tracks, detections):
@@ -188,8 +204,18 @@ def visualize_detections(image,
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         cx, cy = detection.compute_center()
-        # image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=3)
+        image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=3)
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
+
+        # Draw spatial distance threshold
+        area = decay_weighted_mean(
+            [x.compute_area_bbox() for x in detection.track.detections])
+        cv2.circle(
+            image, (cx, cy),
+            radius=int(area * SPATIAL_DISTANCE_THRESHOLD),
+            thickness=1,
+            color=color)
+
         if detection.track.velocity is not None:
             vx, vy = detection.track.velocity
             # Expand for visualization
@@ -239,7 +265,7 @@ def main():
     with open(args.detectron_pickle, 'rb') as f:
         data = pickle.load(f)
 
-    frames = sorted(data.keys(), key=lambda x: int(x))
+    frames = sorted(data.keys(), key=lambda x: int(x))[:100]
 
     tracks = []
     track_id = 0
@@ -292,8 +318,8 @@ def main():
         if args.output_video is not None:
             images.append(new_image)
 
-        new_image = PIL.Image.fromarray(new_image)
         if args.output_dir is not None:
+            new_image = PIL.Image.fromarray(new_image)
             new_image.save(
                 os.path.join(args.output_dir, image_name + '.png'))
 
