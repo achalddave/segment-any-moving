@@ -169,7 +169,6 @@ def match_detections(tracks, detections):
             is assigned to.
     """
     matched_tracks = [None for _ in detections]
-    left_indices = set(range(len(detections)))
     # Tracks sorted by most recent to oldest.
     tracks = sorted(
         tracks,
@@ -188,7 +187,7 @@ def match_detections(tracks, detections):
         # if track_histogram.sum() != 0:
         #     track_histogram = track_histogram / track_histogram.sum()
         for i in sorted_indices:
-            if i not in left_indices:
+            if matched_tracks[i]:
                 continue
             spatial_distance = track_distance(track, detections[i])
             if (spatial_distance < SPATIAL_DISTANCE_THRESHOLD):
@@ -201,7 +200,6 @@ def match_detections(tracks, detections):
         if (best_match is not None
                 and best_histogram_distance < HISTOGRAM_THRESHOLD):
             matched_tracks[best_match] = track
-            left_indices.remove(best_match)
     return matched_tracks
 
 
