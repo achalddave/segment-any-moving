@@ -157,6 +157,17 @@ def track_distance(track, detection):
 
 
 def match_detections(tracks, detections):
+    """
+    Args:
+        track (list): List of Track objects, containing tracks up to this
+            frame.
+        detections (list): List of Detection objects for the current frame.
+
+    Returns:
+        matched_tracks (list): List of Track objects or None, of length
+            len(detection), containing the Track, if any, that each Detection
+            is assigned to.
+    """
     matched_tracks = [None for _ in detections]
     left_indices = set(range(len(detections)))
     # Tracks sorted by most recent to oldest.
