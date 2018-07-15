@@ -11,6 +11,7 @@ import pycocotools.mask as mask_util
 import skimage.color
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
+from scipy.spatial.distance import cosine
 
 import utils.vis as vis
 from utils.colors import colormap
@@ -26,7 +27,12 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 MAX_SKIP = 30
 
 SPATIAL_DISTANCE_THRESHOLD = 0.00005
-HISTOGRAM_THRESHOLD = 0.5  # Use ~1.4 for histogram intersection
+APPEARANCE_FEATURE = 'histogram'  # or 'histogram'
+assert APPEARANCE_FEATURE in ('mask', 'histogram')
+if APPEARANCE_FEATURE == 'mask':
+    APPEARANCE_THRESHOLD = 1.0
+else:
+    APPEARANCE_THRESHOLD = 0.5
 
 
 def decay_weighted_mean(values, sigma=5):
@@ -178,27 +184,54 @@ def match_detections(tracks, detections):
         range(len(detections)),
         key=lambda index: detections[index].score,
         reverse=True)
+    # TODO(achald): Do the full IOU pass before the mask distance pass. That
+    # is, first check for any tracks where the detection with best IoU has IoU
+    # > 0.5 and the second best detection has IoU < 0.5. Assign these
+    # track-detection pairs. Then in the second step, deal with cases where
+    # we need to look at the masks.
     for track in tracks:
-        best_histogram_distance = np.float('inf')
-        best_match = None
-        track_histogram = track.detections[-1].compute_histogram()[0]
-        # track_histogram = np.sum(
-        #     x.compute_histogram()[0] for x in track.detections)
-        # if track_histogram.sum() != 0:
-        #     track_histogram = track_histogram / track_histogram.sum()
+        ious = {}
+        appearance_distances = {}
+        track_detection = track.detections[-1]
         for i in sorted_indices:
             if matched_tracks[i]:
                 continue
-            spatial_distance = track_distance(track, detections[i])
-            if (spatial_distance < SPATIAL_DISTANCE_THRESHOLD):
-                distance = chi_square_distance(
-                    track.detections[-1].compute_histogram()[0],
-                    detections[i].compute_histogram()[0])
-                if distance < best_histogram_distance:
-                    best_histogram_distance = distance
-                    best_match = i
-        if (best_match is not None
-                and best_histogram_distance < HISTOGRAM_THRESHOLD):
+            detection = detections[i]
+            if ((track_detection.label != detection.label)
+                    or (track_distance(track, detections[i]) >
+                        SPATIAL_DISTANCE_THRESHOLD)):
+                continue
+            ious[i] = mask_util.iou(
+                [track_detection.mask], [detection.mask],
+                pyiscrowd=np.zeros(1)).item()
+            if APPEARANCE_FEATURE == 'mask':
+                appearance_distances[i] = cosine(track_detection.mask_feature,
+                                                 detection.mask_feature)
+            elif APPEARANCE_FEATURE == 'histogram':
+                appearance_distances[i] = chi_square_distance(
+                        track_detection.compute_histogram()[0],
+                        detection.compute_histogram()[0])
+        if not ious:
+            continue
+        sorted_ious = sorted(
+            ious.items(), key=lambda x: x[1], reverse=True)
+        best_iou = sorted_ious[0][1]
+        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
+        if (best_iou - second_best_iou) > 0.3:
+            search_detections = set([sorted_ious[0][0]])
+        elif second_best_iou >= 0.1:
+            search_detections = set([x[0] for x in sorted_ious if x[1] >= 0.1])
+        else:
+            search_detections = set(ious.keys())
+        assert len(search_detections) > 0
+        appearance_distances = {
+            index: distance
+            for index, distance in appearance_distances.items()
+            if index in search_detections
+        }
+        best_match, best_distance = min(
+            appearance_distances.items(), key=lambda x: x[1])
+        if best_distance < APPEARANCE_THRESHOLD:
             matched_tracks[best_match] = track
     return matched_tracks
 
