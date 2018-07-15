@@ -265,7 +265,7 @@ def main():
     with open(args.detectron_pickle, 'rb') as f:
         data = pickle.load(f)
 
-    frames = sorted(data.keys(), key=lambda x: int(x))[:100]
+    frames = sorted(data.keys(), key=lambda x: int(x))
 
     tracks = []
     track_id = 0
