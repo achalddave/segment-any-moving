@@ -171,7 +171,10 @@ def match_detections(tracks, detections):
     matched_tracks = [None for _ in detections]
     left_indices = set(range(len(detections)))
     # Tracks sorted by most recent to oldest.
-    tracks = sorted(tracks, key=lambda t: t.last_timestamp(), reverse=True)
+    tracks = sorted(
+        tracks,
+        key=lambda t: (t.last_timestamp(), t.detections[-1].score),
+        reverse=True)
     sorted_indices = sorted(
         range(len(detections)),
         key=lambda index: detections[index].score,
