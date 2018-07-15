@@ -43,13 +43,21 @@ def decay_weighted_mean(values, sigma=5):
 
 
 class Detection():
-    def __init__(self, box, score, label, timestamp, image=None, mask=None):
+    def __init__(self,
+                 box,
+                 score,
+                 label,
+                 timestamp,
+                 image=None,
+                 mask=None,
+                 mask_feature=None):
         self.box = box  # (x1, y1, x2, y2)
         self.score = score
         self.label = label
         self.timestamp = timestamp
         self.image = image
         self.mask = mask
+        self.mask_feature = mask_feature
         self.track = None
 
     def contour_moments(self):
@@ -278,10 +286,19 @@ def main():
         boxes, masks, _, labels = vis.convert_from_cls_format(
             image_data['boxes'], image_data['segmentations'],
             image_data['keypoints'])
+        mask_features = [None for _ in masks]
+        if 'features' in image_data:
+            # features are of shape (num_segments, d, w, h). Average over w and
+            # h, and convert to a list of length n with each element an array
+            # of shape (d, ).
+            mask_features = [
+                x.mean(axis=(1, 2)) for x in image_data['features']
+            ]
 
         detections = [
-            Detection(box[:4], box[4], label, timestamp, image, mask)
-            for box, mask, label in zip(boxes, masks, labels)
+            Detection(box[:4], box[4], label, timestamp, image, mask,
+                      feature) for box, mask, label, feature in zip(
+                          boxes, masks, labels, mask_features)
             if box[4] > CONTINUE_TRACK_THRESHOLD  #  and label == 1  # person
         ]
         matched_tracks = match_detections(tracks, detections)
