@@ -25,7 +25,7 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-SPATIAL_DISTANCE_THRESHOLD = 0.005
+SPATIAL_DISTANCE_THRESHOLD = 0.00005
 HISTOGRAM_THRESHOLD = 0.5  # Use ~1.4 for histogram intersection
 
 
@@ -148,12 +148,12 @@ def track_distance(track, detection):
     else:
         predicted_box = track.detections[-1].box
         predicted_center = track.detections[-1].compute_center()
-    area = decay_weighted_mean([x.compute_area_bbox() for x in track.detections])
-    target_area = detection.compute_area_bbox()
+    # area = decay_weighted_mean([x.compute_area_bbox() for x in track.detections])
+    # target_area = detection.compute_area_bbox()
     # return (max([abs(p1 - p0)
     #              for p0, p1 in zip(predicted_box, detection.box)]) / area)
-    return (np.linalg.norm(
-        (predicted_center - detection.compute_center()), 2) / area)
+    return (np.linalg.norm((predicted_center - detection.compute_center()), 2)
+            / detection.image.shape[0] / detection.image.shape[1])
 
 
 def match_detections(tracks, detections):
@@ -216,8 +216,7 @@ def visualize_detections(image,
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
         # Draw spatial distance threshold
-        area = decay_weighted_mean(
-            [x.compute_area_bbox() for x in detection.track.detections])
+        area = detection.image.shape[0] * detection.image.shape[1]
         cv2.circle(
             image, (cx, cy),
             radius=int(area * SPATIAL_DISTANCE_THRESHOLD),
