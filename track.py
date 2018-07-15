@@ -212,7 +212,7 @@ def visualize_detections(image,
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         cx, cy = detection.compute_center()
-        image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=3)
+        image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
         # Draw spatial distance threshold
