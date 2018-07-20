@@ -7,12 +7,14 @@ import pycocotools.mask as mask_util
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
+from scipy.misc import imsave
 
 import utils.vis as vis
+from utils.colors import colormap
 from utils.fbms import FbmsGroundtruth, get_tracks_text, masks_to_tracks
 
 
-def process_sequences(fbms_dir, detectron_dir, output_dir):
+def process_sequences(fbms_dir, detectron_dir, output_dir, save_images=False):
     assert fbms_dir.exists()
     assert detectron_dir.exists()
 
@@ -21,7 +23,9 @@ def process_sequences(fbms_dir, detectron_dir, output_dir):
     sequence_paths = list(fbms_dir.iterdir())
     sequence_names = [x.name for x in sequence_paths]
 
+    mask_threshold = 0.7
     output_paths = []
+    seq_number = 0
     for sequence, sequence_path in zip(tqdm(sequence_names), sequence_paths):
         groundtruth_path = sequence_path / 'GroundTruth'
         assert groundtruth_path.exists(), (
@@ -48,8 +52,20 @@ def process_sequences(fbms_dir, detectron_dir, output_dir):
                 '%s does not exist.' % detectron_path)
             with open(detectron_path, 'rb') as f:
                 data = pickle.load(f)
-                _, predicted_masks, _, _ = vis.convert_from_cls_format(
-                    data['boxes'], data['segmentations'], data['keypoints'])
+                predicted_boxes, predicted_masks, _, _ = (
+                    vis.convert_from_cls_format(data['boxes'],
+                                                data['segmentations'],
+                                                data['keypoints']))
+                scores = predicted_boxes[:, -1]
+                if np.all(scores <= mask_threshold):
+                    logging.info('No masks above threshold (%s) Using most '
+                                 'confident mask only.' % mask_threshold)
+                    predicted_masks = [predicted_masks[np.argmax(scores)]]
+                else:
+                    predicted_masks = [
+                        m for i, m in enumerate(predicted_masks)
+                        if scores[i] > 0.5
+                    ]
                 predicted_masks = mask_util.decode(predicted_masks)
                 predicted_masks = [
                     predicted_masks[:, :, i]
@@ -58,11 +74,15 @@ def process_sequences(fbms_dir, detectron_dir, output_dir):
 
             mask_distance = np.zeros(
                 (len(groundtruth_masks), len(predicted_masks)))
-            mask_distance = 1-mask_util.iou(
+            mask_iou = mask_util.iou(
                 [mask_util.encode(p) for p in predicted_masks],
                 [mask_util.encode(np.asfortranarray(g.astype('uint8')))
                  for g in groundtruth_masks],
                 pyiscrowd=np.zeros(len(groundtruth_masks)))
+            assert isinstance(mask_iou, np.ndarray), (
+                'Unknown type of mask_iou (%s) for sequence %s, frame %s' %
+                (type(mask_iou), sequence, frame_number))
+            mask_distance = 1 - mask_iou
 
             # Array of length num_matches, containing tuples of
             # (predicted_mask_index, groundtruth_mask_index)
@@ -73,6 +93,7 @@ def process_sequences(fbms_dir, detectron_dir, output_dir):
                 plt.close()
                 _, ax = plt.subplots(len(assignments), 2)
                 plt.suptitle('Frame %s' % frame_number)
+
             for predicted_mask_index, groundtruth_id in assignments:
                 predicted_mask = predicted_masks[predicted_mask_index]
                 final_mask[predicted_mask != 0] = groundtruth_id + 1
@@ -86,13 +107,43 @@ def process_sequences(fbms_dir, detectron_dir, output_dir):
             if False:
                 plt.show()
             final_masks[frame_number] = final_mask
+
         tracks = masks_to_tracks(final_masks)
         tracks_str = get_tracks_text(tracks, groundtruth.num_frames)
-
         output_file = output_dir / (sequence + '.dat')
         output_paths.append(output_file)
         with open(output_file, 'w') as f:
             f.write(tracks_str)
+
+        if save_images:
+            output_images = output_dir / (sequence + '-images')
+            output_images.mkdir(exist_ok=True)
+            colors = colormap()  # list(range(0, 251, 25))
+            full_output = None
+            for frame_number, frame_labels in frame_number_to_labels.items():
+                groundtruth_output = np.zeros((frame_labels.shape[0],
+                                               frame_labels.shape[1], 3))
+                predictions_output = np.zeros((frame_labels.shape[0],
+                                               frame_labels.shape[1], 3))
+                for color, region_id in groundtruth.color_to_region.items():
+                    if region_id == 0:
+                        color = (255, 255, 255)
+                    else:
+                        color = colors[region_id - 1]
+                    groundtruth_output[frame_labels == region_id] = color
+                    predictions_output[final_masks[frame_number] ==
+                                       region_id] = (color)
+                concatenated = np.hstack((groundtruth_output,
+                                          predictions_output))
+                if full_output is None:
+                    full_output = concatenated
+                else:
+                    full_output = np.vstack((full_output, concatenated))
+                # imsave(output_images / ('groundtruth-%s.jpg' % frame_number),
+                #        groundtruth_output)
+                # imsave(output_images / ('predictions-%s.jpg' % frame_number),
+                #        predictions_output)
+            imsave(output_images / 'final.jpg', full_output)
 
     with open(output_dir / 'all_tracks.txt', 'w') as f:
         for output_path in output_paths:
@@ -122,6 +173,8 @@ def main():
     parser.add_argument('output_dir')
     parser.add_argument(
         '--set', choices=['train', 'test', 'all'], default='all')
+    parser.add_argument(
+        '--save_images', action='store_true')
     args = parser.parse_args()
 
     output = pathlib.Path(args.output_dir)
@@ -143,12 +196,14 @@ def main():
     if use_train:
         process_sequences(fbms_root / 'TrainingSet',
                           detectron_root / 'TrainingSet',
-                          output / 'TrainingSet')
+                          output / 'TrainingSet',
+                          args.save_images)
 
     if use_test:
         process_sequences(fbms_root / 'TestSet',
                           detectron_root / 'TestSet',
-                          output / 'TestSet')
+                          output / 'TestSet',
+                          args.save_images)
 
 
 if __name__ == "__main__":
