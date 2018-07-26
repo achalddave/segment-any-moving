@@ -154,10 +154,6 @@ class Track():
             return None
 
 
-def compute_bbox_area(box):
-    return (box[2] - box[0]) * (box[3] - box[1])
-
-
 def track_distance(track, detection):
     if len(track.detections) > 2:
         history = min(len(track.detections) - 1, 5)
