@@ -30,13 +30,14 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-SPATIAL_DISTANCE_THRESHOLD = 0.00005
-APPEARANCE_FEATURE = 'histogram'  # or 'histogram'
+SPATIAL_THRESHOLD = 0.00005
+IOU_GAP = 0.3
+APPEARANCE_FEATURE = 'mask'  # one of 'mask' or 'histogram'
 assert APPEARANCE_FEATURE in ('mask', 'histogram')
 if APPEARANCE_FEATURE == 'mask':
-    APPEARANCE_THRESHOLD = 1.0
+    APPEARANCE_GAP = 0.5
 else:
-    APPEARANCE_THRESHOLD = 0.5
+    APPEARANCE_GAP = 0.3
 
 
 def decay_weighted_mean(values, sigma=5):
@@ -155,28 +156,32 @@ class Track():
 
 
 def track_distance(track, detection):
-    if len(track.detections) > 2:
-        history = min(len(track.detections) - 1, 5)
-        centers = np.asarray(
-            [x.compute_center() for x in track.detections[-history:]])
-        velocities = centers[1:] - centers[:-1]
-        predicted_box = track.detections[-1].box
-        if False and np.all(
-                np.std(velocities, axis=0) < 0.1 *
-                track.detections[-1].compute_area_bbox()):
-            track.velocity = np.mean(velocities, axis=0)
-            predicted_center = centers[-1] + track.velocity
-        else:
-            predicted_center = centers[-1]
-    else:
-        predicted_box = track.detections[-1].box
-        predicted_center = track.detections[-1].compute_center()
+    # if len(track.detections) > 2:
+    #     history = min(len(track.detections) - 1, 5)
+    #     centers = np.asarray(
+    #         [x.compute_center_box() for x in track.detections[-history:]])
+    #     velocities = centers[1:] - centers[:-1]
+    #     predicted_box = track.detections[-1].box
+    #     if np.all(
+    #             np.std(velocities, axis=0) < 0.1 *
+    #             track.detections[-1].compute_area_bbox()):
+    #         track.velocity = np.mean(velocities, axis=0)
+    #         predicted_center = centers[-1] + track.velocity
+    #     else:
+    #         predicted_center = centers[-1]
+    # else:
+    #     predicted_box = track.detections[-1].box
+    #     predicted_center = track.detections[-1].compute_center_box()
     # area = decay_weighted_mean([x.compute_area_bbox() for x in track.detections])
     # target_area = detection.compute_area_bbox()
     # return (max([abs(p1 - p0)
     #              for p0, p1 in zip(predicted_box, detection.box)]) / area)
-    return (np.linalg.norm((predicted_center - detection.compute_center()), 2)
-            / detection.image.shape[0] / detection.image.shape[1])
+    predicted_cx, predicted_cy = track.detections[-1].compute_center_box()
+    detection_cx, detection_cy = detection.compute_center_box()
+    diff_norm = ((predicted_cx - detection_cx)**2 +
+                 (predicted_cy - detection_cy)**2)**0.5
+    area = detection.image.shape[0] * detection.image.shape[1]
+    return (diff_norm / area)
 
 
 def match_detections(tracks, detections):
@@ -206,49 +211,55 @@ def match_detections(tracks, detections):
     # > 0.5 and the second best detection has IoU < 0.5. Assign these
     # track-detection pairs. Then in the second step, deal with cases where
     # we need to look at the masks.
+
+    # Stage 1: Match tracks to detections with good mask IOU.
+    candidates = collections.defaultdict(list)
     for track in tracks:
-        ious = {}
-        appearance_distances = {}
+        track_ious = {}
         track_detection = track.detections[-1]
         for i in sorted_indices:
-            if matched_tracks[i]:
+            already_matched = matched_tracks[i] is not None
+            different_label = track_detection.label != detections[i].label
+            too_far = (track_distance(track, detections[i]) >
+                       SPATIAL_THRESHOLD)
+            if already_matched or different_label or too_far:
                 continue
-            detection = detections[i]
-            if ((track_detection.label != detection.label)
-                    or (track_distance(track, detections[i]) >
-                        SPATIAL_DISTANCE_THRESHOLD)):
-                continue
-            ious[i] = mask_util.iou(
-                [track_detection.mask], [detection.mask],
-                pyiscrowd=np.zeros(1)).item()
+            track_ious[i] = track_detection.mask_iou(detections[i])
+        if not track_ious:
+            continue
+
+        sorted_ious = sorted(
+            track_ious.items(), key=lambda x: x[1], reverse=True)
+        best_index, best_iou = sorted_ious[0]
+        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
+        if (best_iou - second_best_iou) > IOU_GAP:
+            matched_tracks[best_index] = track
+        else:
+            candidates[track.id] = [d for d, iou in sorted_ious if iou > 0.1]
+
+    # Stage 2: Match tracks to detections with good appearance threshold.
+    for track in tracks:
+        candidates[track.id] = [
+            i for i in candidates[track.id] if matched_tracks[i] is None
+        ]
+        if not candidates[track.id]:
+            continue
+        appearance_distances = {}
+        track_detection = track.detections[-1]
+        for i in candidates[track.id]:
             if APPEARANCE_FEATURE == 'mask':
                 appearance_distances[i] = cosine(track_detection.mask_feature,
-                                                 detection.mask_feature)
+                                                 detections[i].mask_feature)
             elif APPEARANCE_FEATURE == 'histogram':
                 appearance_distances[i] = chi_square_distance(
                         track_detection.compute_histogram()[0],
-                        detection.compute_histogram()[0])
-        if not ious:
-            continue
-        sorted_ious = sorted(
-            ious.items(), key=lambda x: x[1], reverse=True)
-        best_iou = sorted_ious[0][1]
-        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
-        if (best_iou - second_best_iou) > 0.3:
-            search_detections = set([sorted_ious[0][0]])
-        elif second_best_iou >= 0.1:
-            search_detections = set([x[0] for x in sorted_ious if x[1] >= 0.1])
-        else:
-            search_detections = set(ious.keys())
-        assert len(search_detections) > 0
-        appearance_distances = {
-            index: distance
-            for index, distance in appearance_distances.items()
-            if index in search_detections
-        }
-        best_match, best_distance = min(
+                        detections[i].compute_histogram()[0])
+        sorted_distances = sorted(
             appearance_distances.items(), key=lambda x: x[1])
-        if best_distance < APPEARANCE_THRESHOLD:
+        best_match, best_distance = sorted_distances[0]
+        second_best_distance = (sorted_distances[1][1]
+                                if len(sorted_distances) > 1 else 0)
+        if (best_distance - second_best_distance) > APPEARANCE_GAP:
             matched_tracks[best_match] = track
     return matched_tracks
 
@@ -273,7 +284,7 @@ def visualize_detections(image,
         color = [int(x) for x in colors[detection.track.id % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
-        cx, cy = detection.compute_center()
+        cx, cy = detection.compute_center_box()
         image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
