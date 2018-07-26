@@ -1,8 +1,11 @@
 """Playground for tracking objects."""
 
 import argparse
+import collections
+import logging
 import os
 import pickle
+import pprint
 
 import cv2
 import numpy as np
@@ -17,6 +20,7 @@ import utils.vis as vis
 from utils.colors import colormap
 from utils.datasets import get_classes
 from utils.distance import chi_square_distance, intersection_distance
+from utils.log import setup_logging
 
 # Detection confidence threshold for starting a new track
 NEW_TRACK_THRESHOLD = 0.9
@@ -317,6 +321,21 @@ def main():
             or args.output_track_file is not None), (
             'One of --output-dir, --output-video, or --output-track-file must '
             'be specified.')
+
+    if args.output_track_file is not None:
+        output_log_file = (
+            os.path.splitext(args.output_track_file)[0] + '-tracker.log')
+    elif args.output_video is not None:
+        output_log_file = (
+            os.path.splitext(args.output_video)[0] + '-tracker.log')
+    elif args.output_dir is not None:
+        output_log_file = os.path.join(args.output_dir, 'tracker.log')
+    setup_logging(output_log_file)
+    logging.info('Printing source code to logging file')
+    with open(__file__, 'r') as f:
+        logging.debug(f.read())
+
+    logging.info('Args: %s', pprint.pformat(args))
 
     with open(args.detectron_pickle, 'rb') as f:
         data = pickle.load(f)
