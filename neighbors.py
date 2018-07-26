@@ -73,7 +73,7 @@ def main():
     with open(args.detectron_pickle, 'rb') as f:
         data = pickle.load(f)
 
-    frames = sorted(data.keys(), key=lambda x: int(x))[:10]
+    frames = sorted(data.keys(), key=lambda x: int(x))
     sampled_frames = random.sample(frames, args.num_queries)
     logging.info('Loading images')
     images = {}
