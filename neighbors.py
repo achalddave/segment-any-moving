@@ -85,6 +85,18 @@ def main():
 
     logging.info('Finding neighbors')
     mask_color = [205, 168, 255]
+    query_format = """
+    <div class='query-block'>
+        <div class='query'>
+            <img src='{query_path}' />
+        </div>
+        <div class='neighbors'>
+            {neighbors}
+        </div>
+    </div>
+    """
+    neighbor_format = "<img class='neighbor' src='{neighbor_path}' />"
+    output_html = ''
     for query_name in tqdm(sampled_frames):
         query_timestamp = int(query_name)
         query_image = images[query_name]
@@ -102,10 +114,9 @@ def main():
             color=mask_color,
             alpha=0.0,
             border_thick=5)
-        save_image(
-            query_image_mask,
-            os.path.join(args.output_neighbors_dir,
-                         'query-%s.png' % query_name))
+        query_path = 'query-%s.png' % query_name
+        save_image(query_image_mask,
+                   os.path.join(args.output_neighbors_dir, query_path))
 
         neighbors = NeighborsQueue(maxsize=args.num_neighbors)
         for timestamp, name in enumerate(tqdm(frames)):
@@ -122,6 +133,7 @@ def main():
         # neighbors are returned in furthest-to-closest order; reverse that.
         neighbors_list = neighbors_list[::-1]
 
+        neighbors_html = ''
         for neighbor_index, neighbor in enumerate(neighbors_list):
             neighbor_detection, distance = neighbor
             neighbor_mask = vis.vis_mask(
@@ -130,13 +142,35 @@ def main():
                 color=mask_color,
                 alpha=0.0,
                 border_thick=5)
-            save_image(
-                neighbor_mask,
-                os.path.join(
-                    args.output_neighbors_dir,
-                    'query-%s-neighbor-%s-frame-%s-distance-%.4f.png' %
-                    (query_name, neighbor_index, neighbor_detection.timestamp,
-                     100 * distance)))
+            neighbor_file = ('query-%s-neighbor-%s-frame-%s-distance-%.4f.png'
+                             % (query_name, neighbor_index,
+                                neighbor_detection.timestamp, 100 * distance))
+            neighbors_html += neighbor_format.format(
+                neighbor_path=neighbor_file)
+            save_image(neighbor_mask,
+                       os.path.join(args.output_neighbors_dir, neighbor_file))
+        output_html += query_format.format(
+            query_path=query_path, neighbors=neighbors_html)
+    output_html = """
+    <html>
+    <style type='text/css'>
+    img {{
+        height: 200px;
+    }}
+    .neighbors {{
+        height: 200px;
+        overflow-x: scroll;
+        white-space: nowrap;
+    }}
+    </style>
+    <body>
+    {}
+    </body>
+    </html>
+    """.format(output_html)
+    with open(os.path.join(args.output_neighbors_dir, 'neighbors.html'),
+              'w') as f:
+        f.write(output_html)
 
 
 if __name__ == "__main__":
