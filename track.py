@@ -69,20 +69,26 @@ class Detection():
         self.mask = mask
         self.mask_feature = mask_feature
         self.track = None
+        self._computed_values = {
+            'contour_moments': None,
+            'center_box': None,
+            'center_mask': None
+        }
 
     def contour_moments(self):
-        if not hasattr(self, '_contour_moments'):
-            self._contour_moments = cv2.moments(self.decoded_mask())
-        return self._contour_moments
+        if self._computed_values['contour_moments'] is not None:
+            self._computed_values['contour_moments'] = cv2.moments(self.decoded_mask())
+        return self._computed_values['contour_moments']
 
     def compute_center(self):
-        moments = self.contour_moments()
-        # See
-        # <https://docs.opencv.org/3.1.0/dd/d49/tutorial_py_contour_features.html>
-        cx = int(moments['m10'] / moments['m00'])
-        cy = int(moments['m01'] / moments['m00'])
-        self.center = np.asarray([cx, cy])
-        return self.center
+        if self._computed_values['center_mask'] is None:
+            moments = self.contour_moments()
+            # See
+            # <https://docs.opencv.org/3.1.0/dd/d49/tutorial_py_contour_features.html>
+            cx = int(moments['m10'] / moments['m00'])
+            cy = int(moments['m01'] / moments['m00'])
+            self._computed_values['center_mask'] = (cx, cy)
+        return self._computed_values['center_mask']
 
     def compute_area(self):
         return self.contour_moments()['m00']
