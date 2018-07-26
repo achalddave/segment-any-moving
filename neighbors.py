@@ -5,12 +5,11 @@ import logging
 import os
 import pickle
 import random
-from queue import PriorityQueue
 
 import cv2
-import numpy as np
 import PIL
 import pycocotools.mask as mask_util
+from scipy.spatial.distance import cosine
 from tqdm import tqdm
 
 import utils.vis as vis
@@ -125,7 +124,9 @@ def main():
             detections = detections_from_detectron_data(
                 frame_data, image, timestamp)
             for detection in detections:
-                distance = histogram_distance(query_detection, detection)
+                distance = cosine(query_detection.mask_feature,
+                                  detection.mask_feature)
+                # distance = histogram_distance(query_detection, detection)
                 neighbors.put(detection, distance)
 
         # List of (detection, distance) tuples.
