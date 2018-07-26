@@ -56,7 +56,7 @@ def main():
     parser.add_argument('--dataset', default='coco', choices=['coco'])
     parser.add_argument('--num-queries', default=5, type=int,
                         help='How many queries to visualize neighbors for')
-    parser.add_argument('--num-neighbors', default=100, type=int,
+    parser.add_argument('--num-neighbors', default=50, type=int,
                         help='How many neighbors to visualize')
     parser.add_argument('--seed', default=0, type=int)
 
