@@ -353,6 +353,7 @@ def main():
     if args.output_video is not None:
         images = []
 
+    label_list = get_classes(args.dataset)
     for timestamp, image_name in enumerate(tqdm(frames)):
         image = cv2.imread(
             os.path.join(args.images_dir, image_name + args.extension))
@@ -425,6 +426,8 @@ def main():
         # Map frame number to list of Detections
         frame_detections = collections.defaultdict(list)
         for track in all_tracks:
+            if label_list[track.detections[-1].label] != 'person':
+                continue
             if (len(track.detections) <= 4
                     or all([x.score < 0.5 for x in track.detections])):
                 continue
