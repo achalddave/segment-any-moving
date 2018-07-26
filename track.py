@@ -90,6 +90,13 @@ class Detection():
             self._computed_values['center_mask'] = (cx, cy)
         return self._computed_values['center_mask']
 
+    def compute_center_box(self):
+        if self._computed_values['center_box'] is None:
+            x0, y0, x1, y1 = self.box
+            self._computed_values['center_box'] = ((x0 + x1) / 2,
+                                                   (y0 + y1) / 2)
+        return self._computed_values['center_box']
+
     def compute_area(self):
         return self.contour_moments()['m00']
 
@@ -99,6 +106,10 @@ class Detection():
 
     def decoded_mask(self):
         return mask_util.decode(self.mask)
+
+    def mask_iou(self, detection):
+        return mask_util.iou(
+            [self.mask], [detection.mask], pyiscrowd=np.zeros(1)).item()
 
     def compute_histogram(self):
         # Compute histogram in LAB space, as in
