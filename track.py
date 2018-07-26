@@ -277,7 +277,8 @@ def visualize_detections(image,
             # Expand for visualization
             vx *= 2
             vy *= 2
-            print('Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
+            logging.info(
+                'Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
             cv2.arrowedLine(
                 image, (int(cx), int(cy)), (int(cx + vx), int(cy + vy)),
                 color=color,
