@@ -18,17 +18,26 @@ from utils.distance import histogram_distance, NeighborsQueue
 from track import Detection
 
 
-def detections_from_detectron_data(detectron_frame_data, image, timestamp):
+def detections_from_detectron_data(detectron_data, image, timestamp):
     boxes, masks, _, labels = vis.convert_from_cls_format(
-        detectron_frame_data['boxes'], detectron_frame_data['segmentations'],
-        detectron_frame_data['keypoints'])
+        detectron_data['boxes'], detectron_data['segmentations'],
+        detectron_data['keypoints'])
 
     masks = mask_util.decode(masks)  # Shape (height, width, num_masks)
     masks = [masks[:, :, i] for i in range(masks.shape[-1])]
+    mask_features = [None for mask in masks]
+    if 'features' in detectron_data:
+        # features are of shape (num_segments, d, w, h). Average over w and
+        # h, and convert to a list of length n with each element an array
+        # of shape (d, ).
+        mask_features = [
+            x.mean(axis=(1, 2)) for x in detectron_data['features']
+        ]
     assert len(boxes) == len(masks) == len(labels)
     detections = [
-        Detection(box[:4], box[4], label, timestamp, image, mask)
-        for box, mask, label in zip(boxes, masks, labels)
+        Detection(box[:4], box[4], label, timestamp, image, mask,
+                  feature) for box, mask, label, feature in zip(
+                      boxes, masks, labels, mask_features)
     ]
     return detections
 
