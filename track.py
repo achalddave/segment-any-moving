@@ -307,21 +307,33 @@ def main():
     parser.add_argument('--output-dir')
     parser.add_argument('--output-video')
     parser.add_argument('--output-video-fps', default=3, type=float)
+    parser.add_argument('--output-track-file')
     parser.add_argument('--extension', default='.png')
     parser.add_argument('--dataset', default='coco', choices=['coco'])
 
     args = parser.parse_args()
-    assert args.output_dir is not None or args.output_video is not None, (
-        'One of --output-dir or --output-video must be specified.')
+    assert (args.output_dir is not None
+            or args.output_video is not None
+            or args.output_track_file is not None), (
+            'One of --output-dir, --output-video, or --output-track-file must '
+            'be specified.')
 
     with open(args.detectron_pickle, 'rb') as f:
         data = pickle.load(f)
 
     frames = sorted(data.keys(), key=lambda x: int(x))
 
-    tracks = []
+    should_visualize = (args.output_dir is not None
+                        or args.output_video is not None)
+    should_output_tracks = args.output_track_file is not None
+    if should_output_tracks:
+        logging.info('Outputing tracks to %s', args.output_track_file)
+        all_tracks = []
+    current_tracks = []
     track_id = 0
-    images = []
+    if args.output_video is not None:
+        images = []
+
     for timestamp, image_name in enumerate(tqdm(frames)):
         image = cv2.imread(
             os.path.join(args.images_dir, image_name + args.extension))
@@ -345,7 +357,7 @@ def main():
                           boxes, masks, labels, mask_features)
             if box[4] > CONTINUE_TRACK_THRESHOLD  #  and label == 1  # person
         ]
-        matched_tracks = match_detections(tracks, detections)
+        matched_tracks = match_detections(current_tracks, detections)
         # print('Timestamp: %s, Num matched tracks: %s' %
         #       (timestamp, len([x for x in matched_tracks if x is not None])))
 
@@ -354,6 +366,8 @@ def main():
             if track is None:
                 if detection.score > NEW_TRACK_THRESHOLD:
                     track = Track(track_id)
+                    if should_output_tracks:
+                        all_tracks.append(track)
                     track_id += 1
                 else:
                     continue
@@ -363,30 +377,70 @@ def main():
 
         continued_track_ids = set([x.id for x in continued_tracks])
         skipped_tracks = []
-        for track in tracks:
+        for track in current_tracks:
             if track.id not in continued_track_ids and (
                     track.last_timestamp() - timestamp) < MAX_SKIP:
                 skipped_tracks.append(track)
 
-        tracks = continued_tracks + skipped_tracks
+        current_tracks = continued_tracks + skipped_tracks
 
-        new_image = visualize_detections(
-            image, [
-                track.detections[-1] for track in tracks
-                if track.last_timestamp() == timestamp
-            ],
-            dataset=args.dataset)
-        if args.output_video is not None:
-            images.append(new_image)
+        if should_visualize:
+            new_image = visualize_detections(
+                image, [
+                    track.detections[-1] for track in current_tracks
+                    if track.last_timestamp() == timestamp
+                ],
+                dataset=args.dataset)
 
-        if args.output_dir is not None:
-            new_image = PIL.Image.fromarray(new_image)
-            new_image.save(
-                os.path.join(args.output_dir, image_name + '.png'))
+            if args.output_video is not None:
+                images.append(new_image)
+
+            if args.output_dir is not None:
+                new_image = PIL.Image.fromarray(new_image)
+                new_image.save(
+                    os.path.join(args.output_dir, image_name + '.png'))
 
     if args.output_video is not None:
         clip = ImageSequenceClip(images, fps=args.output_video_fps)
         clip.write_videofile(args.output_video)
+
+    if should_output_tracks is not None:
+        all_tracks = sorted(all_tracks, key=lambda t: t.last_timestamp())
+
+        # Map frame number to list of Detections
+        frame_detections = collections.defaultdict(list)
+        for track in all_tracks:
+            if (len(track.detections) <= 4
+                    or all([x.score < 0.5 for x in track.detections])):
+                continue
+            for detection in track.detections:
+                frame_detections[detection.timestamp].append(detection)
+
+        output_str = ''
+        # The last three fields are 'x', 'y', and 'z', and are only used for
+        # 3D object detection.
+        output_line_format = (
+            '{frame},{track_id},{left},{top},{width},{height},{conf},-1,-1,-1'
+            '\n')
+        for frame, frame_detections in sorted(
+                frame_detections.items(), key=lambda x: x[0]):
+            for detection in frame_detections:
+                x0, y0, x1, y1 = detection.box
+                width = x1 - x0
+                height = y1 - y0
+                output_str += output_line_format.format(
+                    frame=frame + 1,
+                    track_id=detection.track.id,
+                    left=x0,
+                    top=y0,
+                    width=width,
+                    height=height,
+                    conf=detection.score,
+                    x=-1,
+                    y=-1,
+                    z=-1)
+        with open(args.output_track_file, 'w') as f:
+            f.write(output_str)
 
 
 if __name__ == "__main__":
