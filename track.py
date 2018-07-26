@@ -363,12 +363,8 @@ def main():
             image_data['keypoints'])
         mask_features = [None for _ in masks]
         if 'features' in image_data:
-            # features are of shape (num_segments, d, w, h). Average over w and
-            # h, and convert to a list of length n with each element an array
-            # of shape (d, ).
-            mask_features = [
-                x.mean(axis=(1, 2)) for x in image_data['features']
-            ]
+            # features are of shape (num_segments, d)
+            mask_features = list(image_data['features'])
 
         detections = [
             Detection(box[:4], box[4], label, timestamp, image, mask,
