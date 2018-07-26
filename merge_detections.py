@@ -4,6 +4,8 @@ import argparse
 import os
 import pickle
 
+from tqdm import tqdm
+
 
 def main():
     # Use first line of file docstring as description if a file docstring
@@ -21,10 +23,9 @@ def main():
     files = [x for x in files if x.endswith(args.extension)]
 
     output = {}
-    for file in files:
+    for file in tqdm(files):
         with open(os.path.join(args.input_directory, file), 'rb') as f:
             output[file[:-len(args.extension)]] = pickle.load(f)
-            print(file[:-len(args.extension)])
 
     with open(args.output_pickle, 'wb') as f:
         pickle.dump(output, f)
