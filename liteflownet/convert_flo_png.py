@@ -33,6 +33,7 @@ def main():
     input_root = Path(args.input_dir)
     output_root = Path(args.output_dir)
     assert input_root.exists()
+    output_root.mkdir(exist_ok=True, parents=True)
 
     setup_logging(str(output_root / (Path(__file__).stem + '.log')))
     logging.info('Args: %s', vars(args))
