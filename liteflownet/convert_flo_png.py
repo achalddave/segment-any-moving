@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from utils.log import setup_logging
 
+
 def main():
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
