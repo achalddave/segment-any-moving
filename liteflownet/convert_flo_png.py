@@ -45,9 +45,7 @@ def main():
     for flo_path in tqdm(flo_paths):
         output_dir = output_root / flo_path.parent.relative_to(input_root)
         output_dir.mkdir(exist_ok=True, parents=True)
-        # File paths are of the form <model_name>-<frame>.flo, where
-        # <model_name> can contain '-'.
-        frame_id = int(flo_path.stem.split('-')[-1])
+        frame_id = int(flo_path.stem)
 
         flow = cv2.optflow.readOpticalFlow(str(flo_path))
         flow_x, flow_y = flow[:, :, 0], flow[:, :, 1]
@@ -70,7 +68,7 @@ def main():
         assert magnitude.max() >= 0, (
             'magnitude.max() (%s) < 0' % magnitude.max())
 
-        output_image = output_dir / ('%05d.png' % frame_id)
+        output_image = output_dir / (flo_path.stem + '.png')
         flow = np.zeros(flow.shape, dtype=np.uint8)
         flow[:, :, 0] = angle
         flow[:, :, 1] = magnitude

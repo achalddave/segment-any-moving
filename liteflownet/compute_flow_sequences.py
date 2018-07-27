@@ -4,7 +4,7 @@ import argparse
 import subprocess
 from math import ceil
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import numpy as np
 from PIL import Image
@@ -87,13 +87,17 @@ def main():
         output.mkdir(exist_ok=True, parents=True)
 
         image_paths = sorted(image_paths, key=lambda x: int(x.stem))
-        image_paths = [str(x) for x in image_paths]
+        image_paths_str = [str(x) for x in image_paths]
+        # Note: We ask LiteFlowNet to output flows to a temporary subdirectory
+        # in output, since LiteFlowNet has its own convention for how to name
+        # the output files. Then, we move the output files to match the
+        # convention of the input files.
         with NamedTemporaryFile('w', prefix=__file__) as image1_text_f, \
                 NamedTemporaryFile('w', prefix=__file__) as image2_text_f, \
-                NamedTemporaryFile('w', prefix=__file__) as prototxt_f:
-            print(image_paths)
-            image1_text_f.write('\n'.join(image_paths[:-1]))
-            image2_text_f.write('\n'.join(image_paths[1:]))
+                NamedTemporaryFile('w', prefix=__file__) as prototxt_f, \
+                TemporaryDirectory('w', dir=output) as output_tmp:
+            image1_text_f.write('\n'.join(image_paths_str[:-1]))
+            image2_text_f.write('\n'.join(image_paths_str[1:]))
             replacement_list = {
                 '$ADAPTED_WIDTH': ('%d' % adapted_width),
                 '$ADAPTED_HEIGHT': ('%d' % adapted_height),
@@ -101,7 +105,7 @@ def main():
                 '$TARGET_HEIGHT': ('%d' % height),
                 '$SCALE_WIDTH': ('%.8f' % rescale_coeff_x),
                 '$SCALE_HEIGHT': ('%.8f' % rescale_coeff_y),
-                '$OUTFOLDER': ('%s' % '"' + str(output) + '"'),
+                '$OUTFOLDER': ('%s' % '"' + output_tmp + '"'),
                 '$CNN': ('%s' % '"' + args.cnn_model + '-"'),
                 'tmp/img1.txt': image1_text_f.name,
                 'tmp/img2.txt': image2_text_f.name
@@ -122,6 +126,17 @@ def main():
             ]
             print('Executing %s' % ' '.join(command))
             subprocess.call(command)
+
+            # Rename output files to match second image path.
+            output_tmp = Path(output_tmp)
+            output_paths = sorted(
+                list(output_tmp.iterdir()),
+                key=lambda x: int(x.stem.split('-')[-1]))
+            for input_path, output_path in zip(image_paths[:-1], output_paths):
+                new_output_path = (output /
+                                   (input_path.stem + output_path.suffix))
+                print('Moving %s to %s' % (output_path, new_output_path))
+                output_path.rename(new_output_path)
 
 
 if __name__ == "__main__":
