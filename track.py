@@ -449,7 +449,7 @@ def main():
         all_tracks = sorted(all_tracks, key=lambda t: t.last_timestamp())
 
         # Map frame number to list of Detections
-        frame_detections = collections.defaultdict(list)
+        detections_by_frame = collections.defaultdict(list)
         for track in all_tracks:
             if label_list[track.detections[-1].label] != 'person':
                 continue
@@ -457,7 +457,7 @@ def main():
                     or all([x.score < 0.5 for x in track.detections])):
                 continue
             for detection in track.detections:
-                frame_detections[detection.timestamp].append(detection)
+                detections_by_frame[detection.timestamp].append(detection)
 
         output_str = ''
         # The last three fields are 'x', 'y', and 'z', and are only used for
@@ -466,7 +466,7 @@ def main():
             '{frame},{track_id},{left},{top},{width},{height},{conf},-1,-1,-1'
             '\n')
         for frame, frame_detections in sorted(
-                frame_detections.items(), key=lambda x: x[0]):
+                detections_by_frame.items(), key=lambda x: x[0]):
             for detection in frame_detections:
                 x0, y0, x1, y1 = detection.box
                 width = x1 - x0
