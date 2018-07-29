@@ -372,11 +372,9 @@ def main():
     should_output_tracks = args.output_track_file is not None
     if should_output_tracks:
         logging.info('Outputing tracks to %s', args.output_track_file)
-        all_tracks = []
+    all_tracks = []
     current_tracks = []
     track_id = 0
-    if args.output_video is not None:
-        images = []
 
     label_list = get_classes(args.dataset)
     for timestamp, image_name in enumerate(tqdm(frames)):
@@ -407,8 +405,7 @@ def main():
             if track is None:
                 if detection.score > NEW_TRACK_THRESHOLD:
                     track = Track(track_id)
-                    if should_output_tracks:
-                        all_tracks.append(track)
+                    all_tracks.append(track)
                     track_id += 1
                 else:
                     continue
@@ -425,27 +422,8 @@ def main():
 
         current_tracks = continued_tracks + skipped_tracks
 
-        if should_visualize:
-            new_image = visualize_detections(
-                image, [
-                    track.detections[-1] for track in current_tracks
-                    if track.last_timestamp() == timestamp
-                ],
-                dataset=args.dataset)
-
-            if args.output_video is not None:
-                images.append(new_image)
-
-            if args.output_dir is not None:
-                new_image = PIL.Image.fromarray(new_image)
-                new_image.save(
-                    os.path.join(args.output_dir, image_name + '.png'))
-
-    if args.output_video is not None:
-        clip = ImageSequenceClip(images, fps=args.output_video_fps)
-        clip.write_videofile(args.output_video)
-
     if should_output_tracks is not None:
+        logging.info('Outputting tracks')
         # Map frame number to list of Detections
         filtered_tracks = []
         for track in all_tracks:
@@ -485,6 +463,36 @@ def main():
                     z=-1)
         with open(args.output_track_file, 'w') as f:
             f.write(output_str)
+        logging.info('Output tracks to %s' % args.output_track_file)
+
+    if should_visualize:
+        logging.info('Visualizing tracks')
+        # Map frame number to list of Detections
+        detections_by_frame = collections.defaultdict(list)
+        for track in all_tracks:
+            for detection in track.detections:
+                detections_by_frame[detection.timestamp].append(detection)
+
+        if args.output_video is not None:
+            images = []
+        for timestamp, image_name in enumerate(tqdm(frames)):
+            image = cv2.imread(
+                os.path.join(args.images_dir, image_name + args.extension))
+            image = image[:, :, ::-1]  # BGR -> RGB
+            new_image = visualize_detections(
+                image, detections_by_frame[timestamp], dataset=args.dataset)
+
+            if args.output_video is not None:
+                images.append(new_image)
+
+            if args.output_dir is not None:
+                new_image = PIL.Image.fromarray(new_image)
+                new_image.save(
+                    os.path.join(args.output_dir, image_name + '.png'))
+
+        if args.output_video is not None:
+            clip = ImageSequenceClip(images, fps=args.output_video_fps)
+            clip.write_videofile(args.output_video)
 
 
 if __name__ == "__main__":
