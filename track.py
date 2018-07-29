@@ -447,13 +447,16 @@ def main():
 
     if should_output_tracks is not None:
         # Map frame number to list of Detections
-        detections_by_frame = collections.defaultdict(list)
+        filtered_tracks = []
         for track in all_tracks:
-            if label_list[track.detections[-1].label] != 'person':
-                continue
-            if (len(track.detections) <= 4
-                    or all([x.score < 0.5 for x in track.detections])):
-                continue
+            is_person = label_list[track.detections[-1].label] == 'person'
+            is_long_enough = len(track.detections) > 4
+            has_high_score = any(x.score >= 0.5 for x in track.detections)
+            if is_person and is_long_enough and has_high_score:
+                filtered_tracks.append(track)
+
+        detections_by_frame = collections.defaultdict(list)
+        for track in filtered_tracks:
             for detection in track.detections:
                 detections_by_frame[detection.timestamp].append(detection)
 
