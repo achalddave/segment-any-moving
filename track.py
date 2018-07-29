@@ -446,8 +446,6 @@ def main():
         clip.write_videofile(args.output_video)
 
     if should_output_tracks is not None:
-        all_tracks = sorted(all_tracks, key=lambda t: t.last_timestamp())
-
         # Map frame number to list of Detections
         detections_by_frame = collections.defaultdict(list)
         for track in all_tracks:
