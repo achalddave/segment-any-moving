@@ -260,7 +260,7 @@ def match_detections(tracks, detections):
         best_match, best_distance = sorted_distances[0]
         second_best_distance = (sorted_distances[1][1]
                                 if len(sorted_distances) > 1 else 0)
-        if (best_distance - second_best_distance) > APPEARANCE_GAP:
+        if (second_best_distance - best_distance) > APPEARANCE_GAP:
             matched_tracks[best_match] = track
     return matched_tracks
 
