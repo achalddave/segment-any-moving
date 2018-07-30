@@ -339,7 +339,7 @@ def main():
     parser.add_argument('--images-dir', required=True)
     parser.add_argument('--output-dir')
     parser.add_argument('--output-video')
-    parser.add_argument('--output-video-fps', default=3, type=float)
+    parser.add_argument('--output-video-fps', default=10, type=float)
     parser.add_argument('--output-track-file')
     parser.add_argument('--extension', default='.png')
     parser.add_argument('--dataset', default='coco', choices=['coco'])
