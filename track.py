@@ -33,6 +33,7 @@ MAX_SKIP = 30
 
 SPATIAL_THRESHOLD = 0.00005
 IOU_GAP = 0.3
+MIN_IOU = 0
 APPEARANCE_FEATURE = 'mask'  # one of 'mask' or 'histogram'
 assert APPEARANCE_FEATURE in ('mask', 'histogram')
 if APPEARANCE_FEATURE == 'mask':
@@ -236,7 +237,9 @@ def match_detections(tracks, detections):
         if (best_iou - second_best_iou) > IOU_GAP:
             matched_tracks[best_index] = track
         else:
-            candidates[track.id] = [d for d, iou in sorted_ious if iou > 0.1]
+            candidates[track.id] = [
+                d for d, iou in sorted_ious if iou >= MIN_IOU
+            ]
 
     # Stage 2: Match tracks to detections with good appearance threshold.
     for track in tracks:
