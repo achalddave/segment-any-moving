@@ -6,6 +6,7 @@ import logging
 import os
 import pickle
 import pprint
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -331,7 +332,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--detectron-pickle', required=True)
+    parser.add_argument('--detectron-dir', required=True)
     parser.add_argument('--images-dir', required=True)
     parser.add_argument('--output-dir')
     parser.add_argument('--output-video')
@@ -362,8 +363,27 @@ def main():
 
     logging.info('Args: %s', pprint.pformat(args))
 
-    with open(args.detectron_pickle, 'rb') as f:
-        data = pickle.load(f)
+    detectron_input = Path(args.detectron_dir)
+    if not detectron_input.is_dir():
+        raise ValueError(
+            '--detectron-dir %s is not a directory!' % args.detectron_dir)
+
+    data = {}
+    for x in detectron_input.glob('*.pickle'):
+        if x.stem == 'merged':
+            logging.info('NOTE: Ignoring merged.pickle for backward '
+                         'compatibility')
+            continue
+
+        try:
+            int(x.stem)
+        except ValueError:
+            logging.fatal('Expected pickle files to be named <frame_id>.pickle'
+                          ', found %s.' % x)
+            raise
+
+        with open(x, 'rb') as f:
+            data[x.stem] = pickle.load(f)
 
     frames = sorted(data.keys(), key=lambda x: int(x))
 
