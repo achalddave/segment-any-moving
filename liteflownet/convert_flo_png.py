@@ -77,7 +77,7 @@ def main():
         image = Image.fromarray(flow)
         image.save(output_image)
 
-        output_metadata = output_dir / ('%05d_magnitude_minmax.txt' % frame_id)
+        output_metadata = output_dir / (flo_path.stem + '_magnitude_minmax.txt')
         with open(output_metadata, 'w') as f:
             f.write('%s %s' % (min_magnitude, max_magnitude))
 
