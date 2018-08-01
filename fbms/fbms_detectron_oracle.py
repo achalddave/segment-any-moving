@@ -14,7 +14,11 @@ from utils.colors import colormap
 from utils.fbms.utils import FbmsGroundtruth, get_tracks_text, masks_to_tracks
 
 
-def process_sequences(fbms_dir, detectron_dir, output_dir, save_images=False):
+def process_sequences(fbms_dir,
+                      detectron_dir,
+                      output_dir,
+                      save_images=False,
+                      detectron_threshold=0.7):
     assert fbms_dir.exists()
     assert detectron_dir.exists()
 
@@ -23,7 +27,6 @@ def process_sequences(fbms_dir, detectron_dir, output_dir, save_images=False):
     sequence_paths = list(fbms_dir.iterdir())
     sequence_names = [x.name for x in sequence_paths]
 
-    mask_threshold = 0.7
     output_paths = []
     seq_number = 0
     for sequence, sequence_path in zip(tqdm(sequence_names), sequence_paths):
@@ -57,9 +60,9 @@ def process_sequences(fbms_dir, detectron_dir, output_dir, save_images=False):
                                                 data['segmentations'],
                                                 data['keypoints']))
                 scores = predicted_boxes[:, -1]
-                if np.all(scores <= mask_threshold):
+                if np.all(scores <= detectron_threshold):
                     logging.info('No masks above threshold (%s) Using most '
-                                 'confident mask only.' % mask_threshold)
+                                 'confident mask only.' % detectron_threshold)
                     predicted_masks = [predicted_masks[np.argmax(scores)]]
                 else:
                     predicted_masks = [
@@ -175,6 +178,8 @@ def main():
         '--set', choices=['train', 'test', 'all'], default='all')
     parser.add_argument(
         '--save_images', action='store_true')
+    parser.add_argument(
+        '--detectron-threshold', type=float, default=0.7)
     args = parser.parse_args()
 
     output = pathlib.Path(args.output_dir)
@@ -197,13 +202,15 @@ def main():
         process_sequences(fbms_root / 'TrainingSet',
                           detectron_root / 'TrainingSet',
                           output / 'TrainingSet',
-                          args.save_images)
+                          args.save_images,
+                          args.detectron_threshold)
 
     if use_test:
         process_sequences(fbms_root / 'TestSet',
                           detectron_root / 'TestSet',
                           output / 'TestSet',
-                          args.save_images)
+                          args.save_images,
+                          args.detectron_threshold)
 
 
 if __name__ == "__main__":
