@@ -1,0 +1,3 @@
+[submodule "utils/fbms"]
+	path = utils/fbms
+	url = git@bitbucket.org:devalab/fbms.git
