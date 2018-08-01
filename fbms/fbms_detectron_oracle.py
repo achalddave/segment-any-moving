@@ -11,7 +11,7 @@ from scipy.misc import imsave
 
 import utils.vis as vis
 from utils.colors import colormap
-from utils.fbms import FbmsGroundtruth, get_tracks_text, masks_to_tracks
+from utils.fbms.utils import FbmsGroundtruth, get_tracks_text, masks_to_tracks
 
 
 def process_sequences(fbms_dir, detectron_dir, output_dir, save_images=False):
