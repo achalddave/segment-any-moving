@@ -164,19 +164,20 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('fbms_root')
-    parser.add_argument('detectron_outputs',
+    parser.add_argument('--fbms-root', required=True)
+    parser.add_argument('--detectron-outputs',
+                        required=True,
                         help="""
                         Directory containing detectron outputs. Assumed to
                         contain TrainingSet/ and TestSet/ directories,
                         structured like
                         TrainingSet/<sequence>/<sequence>_<frame>.pickle, e.g.
                         TrainingSet/bear01/bear01_0000.pickle.""")
-    parser.add_argument('output_dir')
+    parser.add_argument('--output-dir', required=True)
     parser.add_argument(
         '--set', choices=['train', 'test', 'all'], default='all')
     parser.add_argument(
-        '--save_images', action='store_true')
+        '--save-images', action='store_true')
     parser.add_argument(
         '--detectron-threshold', type=float, default=0.7)
     args = parser.parse_args()
