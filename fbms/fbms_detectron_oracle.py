@@ -28,7 +28,6 @@ def process_sequences(fbms_dir,
     sequence_names = [x.name for x in sequence_paths]
 
     output_paths = []
-    seq_number = 0
     for sequence, sequence_path in zip(tqdm(sequence_names), sequence_paths):
         groundtruth_path = sequence_path / 'GroundTruth'
         assert groundtruth_path.exists(), (
