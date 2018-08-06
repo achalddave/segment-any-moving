@@ -72,7 +72,7 @@ class Detection():
         self.mask = mask
         self.mask_feature = mask_feature
         self.track = None
-        self._computed_values = {
+        self._cached_values = {
             'contour_moments': None,
             'center_box': None,
             'center_mask': None,
@@ -80,26 +80,26 @@ class Detection():
         }
 
     def contour_moments(self):
-        if self._computed_values['contour_moments'] is not None:
-            self._computed_values['contour_moments'] = cv2.moments(self.decoded_mask())
-        return self._computed_values['contour_moments']
+        if self._cached_values['contour_moments'] is not None:
+            self._cached_values['contour_moments'] = cv2.moments(self.decoded_mask())
+        return self._cached_values['contour_moments']
 
     def compute_center(self):
-        if self._computed_values['center_mask'] is None:
+        if self._cached_values['center_mask'] is None:
             moments = self.contour_moments()
             # See
             # <https://docs.opencv.org/3.1.0/dd/d49/tutorial_py_contour_features.html>
             cx = int(moments['m10'] / moments['m00'])
             cy = int(moments['m01'] / moments['m00'])
-            self._computed_values['center_mask'] = (cx, cy)
-        return self._computed_values['center_mask']
+            self._cached_values['center_mask'] = (cx, cy)
+        return self._cached_values['center_mask']
 
     def compute_center_box(self):
-        if self._computed_values['center_box'] is None:
+        if self._cached_values['center_box'] is None:
             x0, y0, x1, y1 = self.box
-            self._computed_values['center_box'] = ((x0 + x1) / 2,
+            self._cached_values['center_box'] = ((x0 + x1) / 2,
                                                    (y0 + y1) / 2)
-        return self._computed_values['center_box']
+        return self._cached_values['center_box']
 
     def compute_area(self):
         return self.contour_moments()['m00']
@@ -109,9 +109,9 @@ class Detection():
         return (x1 - x0) * (y1 - y0)
 
     def decoded_mask(self):
-        if self._computed_values['decoded_mask'] is None:
-            self._computed_values['decoded_mask'] = mask_util.decode(self.mask)
-        return self._computed_values['decoded_mask']
+        if self._cached_values['decoded_mask'] is None:
+            self._cached_values['decoded_mask'] = mask_util.decode(self.mask)
+        return self._cached_values['decoded_mask']
 
     def bbox_centered_mask(self):
         """Return mask with respect to bounding box coordinates."""
