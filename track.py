@@ -75,7 +75,8 @@ class Detection():
         self._computed_values = {
             'contour_moments': None,
             'center_box': None,
-            'center_mask': None
+            'center_mask': None,
+            'decoded_mask': None,
         }
 
     def contour_moments(self):
@@ -108,7 +109,38 @@ class Detection():
         return (x1 - x0) * (y1 - y0)
 
     def decoded_mask(self):
-        return mask_util.decode(self.mask)
+        if self._computed_values['decoded_mask'] is None:
+            self._computed_values['decoded_mask'] = mask_util.decode(self.mask)
+        return self._computed_values['decoded_mask']
+
+    def bbox_centered_mask(self):
+        """Return mask with respect to bounding box coordinates."""
+        x1, y1, x2, y2 = self.box
+        x1, y1, x2, y2 = int(x1-0.5), int(y1-0.5), int(x2+0.5), int(y2+0.5)
+        return self.decoded_mask()[x1:x2+1, y1:y2+1]
+
+    def centered_mask_iou(self, detection):
+        mask = self.bbox_centered_mask()
+        other_mask = detection.bbox_centered_mask()
+        if mask.size == 0 or other_mask.size == 0:
+            return 0
+        if mask.shape != other_mask.shape:
+            mask_image = PIL.Image.fromarray(mask)
+            other_mask_image = PIL.Image.fromarray(other_mask)
+            if mask.size > other_mask.size:
+                other_mask_image = other_mask_image.resize(
+                    mask_image.size, resample=PIL.Image.NEAREST)
+            else:
+                mask_image = mask_image.resize(
+                    other_mask_image.size, resample=PIL.Image.NEAREST)
+            mask = np.array(mask_image)
+            other_mask = np.array(other_mask_image)
+        intersection = (mask & other_mask).sum()
+        union = (mask | other_mask).sum()
+        if union == 0:
+            return 0
+        else:
+            return intersection / union
 
     def mask_iou(self, detection):
         return mask_util.iou(
