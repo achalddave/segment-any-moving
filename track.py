@@ -293,8 +293,8 @@ def match_detections(tracks, detections):
         sorted_distances = sorted(
             appearance_distances.items(), key=lambda x: x[1])
         best_match, best_distance = sorted_distances[0]
-        second_best_distance = (sorted_distances[1][1]
-                                if len(sorted_distances) > 1 else 0)
+        second_best_distance = (sorted_distances[1][1] if
+                                len(sorted_distances) > 1 else np.float('inf'))
         if (second_best_distance - best_distance) > APPEARANCE_GAP:
             matched_tracks[best_match] = track
     return matched_tracks
