@@ -375,6 +375,14 @@ def main():
     parser.add_argument('--output-track-file')
     parser.add_argument('--extension', default='.png')
     parser.add_argument('--dataset', default='coco', choices=['coco'])
+    parser.add_argument(
+        '--filename-format', choices=['frame', 'sequence_frame', 'fbms'],
+        default='frame',
+        help=('Specifies how to get frame number from the filename. '
+              '"frame": the filename is the frame number, '
+              '"sequence_frame": the frame number is separated by an '
+                                'underscore'
+              '"fbms": assume fbms style frame numbers'))
 
     args = parser.parse_args()
     assert (args.output_dir is not None
@@ -403,6 +411,17 @@ def main():
         raise ValueError(
             '--detectron-dir %s is not a directory!' % args.detectron_dir)
 
+    if args.filename_format == 'fbms':
+        from utils.fbms.utils import get_framenumber
+    elif args.filename_format == 'sequence_frame':
+        def get_framenumber(x):
+            return int(x.split('_')[-1])
+    elif args.filename_format == 'frame':
+        get_framenumber = int
+    else:
+        raise ValueError(
+            'Unknown --filename-format: %s' % args.filename_format)
+
     data = {}
     for x in detectron_input.glob('*.pickle'):
         if x.stem == 'merged':
@@ -411,7 +430,7 @@ def main():
             continue
 
         try:
-            int(x.stem)
+            get_framenumber(x.stem)
         except ValueError:
             logging.fatal('Expected pickle files to be named <frame_id>.pickle'
                           ', found %s.' % x)
@@ -420,7 +439,7 @@ def main():
         with open(x, 'rb') as f:
             data[x.stem] = pickle.load(f)
 
-    frames = sorted(data.keys(), key=lambda x: int(x))
+    frames = sorted(data.keys(), key=get_framenumber)
 
     should_visualize = (args.output_dir is not None
                         or args.output_video is not None)
@@ -499,14 +518,14 @@ def main():
         output_line_format = (
             '{frame},{track_id},{left},{top},{width},{height},{conf},-1,-1,-1'
             '\n')
-        for frame, frame_detections in sorted(
+        for timestamp, frame_detections in sorted(
                 detections_by_frame.items(), key=lambda x: x[0]):
             for detection in frame_detections:
                 x0, y0, x1, y1 = detection.box
                 width = x1 - x0
                 height = y1 - y0
                 output_str += output_line_format.format(
-                    frame=frame + 1,
+                    frame=get_framenumber(frames[timestamp]),
                     track_id=detection.track.id,
                     left=x0,
                     top=y0,
