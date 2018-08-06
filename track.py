@@ -496,7 +496,7 @@ def main():
 
         current_tracks = continued_tracks + skipped_tracks
 
-    if should_output_tracks is not None:
+    if should_output_tracks:
         logging.info('Outputting tracks')
         # Map frame number to list of Detections
         filtered_tracks = []
