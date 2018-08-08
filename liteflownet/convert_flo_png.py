@@ -35,8 +35,10 @@ def convert_flo(input_flo_path, output_image, output_metadata):
     assert magnitude.max() >= 0, (
         'magnitude.max() (%s) < 0' % magnitude.max())
 
-    output_image = output_dir / (flo_path.stem + '.png')
-    flow = np.zeros(flow.shape, dtype=np.uint8)
+    # Note that we have to create a 3 channel image, as otherwise PIL
+    # saves the image in "LA" format, which OpenCV fails to read properly:
+    # https://github.com/opencv/opencv/issues/12185
+    flow = np.zeros((flow.shape[0], flow.shape[1], 3), dtype=np.uint8)
     flow[:, :, 0] = angle
     flow[:, :, 1] = magnitude
     image = Image.fromarray(flow)
