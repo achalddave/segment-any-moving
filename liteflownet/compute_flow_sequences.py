@@ -6,6 +6,7 @@ from math import ceil
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
+from natsort import natsorted
 import numpy as np
 from PIL import Image
 
@@ -86,7 +87,7 @@ def main():
         output = output_root / (sequence.relative_to(input_root))
         output.mkdir(exist_ok=True, parents=True)
 
-        image_paths = sorted(image_paths, key=lambda x: int(x.stem))
+        image_paths = natsorted(image_paths, key=lambda x: x.stem)
         image_paths_str = [str(x) for x in image_paths]
         # Note: We ask LiteFlowNet to output flows to a temporary subdirectory
         # in output, since LiteFlowNet has its own convention for how to name
