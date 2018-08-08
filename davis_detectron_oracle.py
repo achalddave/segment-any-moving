@@ -11,20 +11,17 @@ from scipy.optimize import linear_sum_assignment
 import utils.vis as vis
 
 
-def get_num_objects(groundtruth):
-    """Count number of objects from segmentation mask
+def get_unique_objects(groundtruth):
+    """Get unique object ids from segmentation mask
 
-    From DAVIS evaluation code.
+    Adapted from DAVIS evaluation code.
     """
     ids = sorted(np.unique(groundtruth))
-
-    # Remove unknown-label
-    ids = ids[:-1] if ids[-1] == 255 else ids
-
-    # Handle no-background case
-    ids = ids if ids[0] else ids[1:]
-
-    return len(ids)
+    if ids[-1] == 255:  # Remove unknown-label
+        ids = ids[:-1]
+    if ids[0] == 0:  # Remove background
+        ids = ids[1:]
+    return ids
 
 
 def main():
@@ -91,17 +88,15 @@ def main():
                 range(num_frames), detectron_frames, davis_frames):
             output_frame = output_sequence / ('%05d.png' % frame)
             groundtruth = np.array(Image.open(davis_path))
-            num_objects = get_num_objects(groundtruth)
-            # Make -1 be background, and all objects 0 indexed
-            groundtruth -= 1
-            groundtruth_masks = [groundtruth == i for i in range(num_objects)]
+            object_ids = get_unique_objects(groundtruth)
+            groundtruth_masks = [groundtruth == i for i in object_ids]
             with open(detectron_path, 'rb') as f:
                 data = pickle.load(f)
             predicted_boxes, predicted_masks, _, _ = (
                 vis.convert_from_cls_format(
                     data['boxes'], data['segmentations'], data['keypoints']))
             # Can threshold scores if necessary
-            scores = predicted_boxes[:, -1]
+            # scores = predicted_boxes[:, -1]
             predicted_masks = mask_util.decode(predicted_masks)
             predicted_masks = [
                 predicted_masks[:, :, i]
@@ -124,7 +119,7 @@ def main():
 
             for predicted_mask_index, groundtruth_id in assignments:
                 predicted_mask = predicted_masks[predicted_mask_index]
-                final_mask[predicted_mask != 0] = groundtruth_id + 1
+                final_mask[predicted_mask != 0] = object_ids[groundtruth_id]
 
             output = Image.fromarray(final_mask)
             output.putpalette(palette.ravel())
