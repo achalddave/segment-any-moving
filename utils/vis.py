@@ -77,7 +77,10 @@ def vis_mask(img, mask, color, alpha=0.4, show_border=True, border_thick=1):
     if show_border:
         _, contours, _ = cv2.findContours(
             mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-        cv2.drawContours(img, contours, -1, color, border_thick, cv2.LINE_AA)
+        if not isinstance(color, list):
+            color = color.tolist()
+        cv2.drawContours(img, contours, -1, color, border_thick,
+                         cv2.LINE_AA)
 
     return img.astype(np.uint8)
 
