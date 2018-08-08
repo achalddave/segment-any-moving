@@ -111,8 +111,8 @@ def load_flow_png(png_path, rgb=True):
         magnitude_min, magnitude_max = f.read().strip().split()
         magnitude_min = float(magnitude_min)
         magnitude_max = float(magnitude_max)
-    image[:, :, 1] = (
-        image[:, :, 1] * (magnitude_max - magnitude_min) + magnitude_min)
+    image[:, :, 1] = (image[:, :, 1] *
+                      (magnitude_max - magnitude_min) / 255.0) + magnitude_min
     if rgb:
         image = image[:, :, ::-1]
     return image
