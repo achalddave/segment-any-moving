@@ -47,7 +47,6 @@ def main():
     for flo_path in tqdm(flo_paths):
         output_dir = output_root / flo_path.parent.relative_to(input_root)
         output_dir.mkdir(exist_ok=True, parents=True)
-        frame_id = int(flo_path.stem)
 
         flow = cv2.optflow.readOpticalFlow(str(flo_path))
         flow_x, flow_y = flow[:, :, 0], flow[:, :, 1]
