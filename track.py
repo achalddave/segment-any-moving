@@ -159,7 +159,7 @@ class Detection():
         # (num_pixels, num_channels)
         mask_pixels = self.image[np.nonzero(self.decoded_mask())]
         # rgb2lab expects a 3D tensor with colors in the last dimension, so
-        # just add a fake dimension.
+        # just add a fake first dimension.
         mask_pixels = mask_pixels[np.newaxis]
         mask_pixels = skimage.color.rgb2lab(mask_pixels)[0]
         # TODO(achald): Check if the range for LAB is correct.
@@ -245,11 +245,6 @@ def match_detections(tracks, detections):
         range(len(detections)),
         key=lambda index: detections[index].score,
         reverse=True)
-    # TODO(achald): Do the full IOU pass before the mask distance pass. That
-    # is, first check for any tracks where the detection with best IoU has IoU
-    # > 0.5 and the second best detection has IoU < 0.5. Assign these
-    # track-detection pairs. Then in the second step, deal with cases where
-    # we need to look at the masks.
 
     # Stage 1: Match tracks to detections with good mask IOU.
     candidates = collections.defaultdict(list)
