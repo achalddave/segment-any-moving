@@ -11,28 +11,25 @@ import cv2
 import PIL
 import pycocotools.mask as mask_util
 from scipy.spatial.distance import cosine
+from joblib import Parallel, delayed
 from tqdm import tqdm
 
 import utils.vis as vis
-from utils.distance import histogram_distance, NeighborsQueue
+from utils.distance import chi_square_distance, NeighborsQueue
 from track import Detection
 
+MIN_QUERY_SCORE = 0.9
+MIN_NEIGHBOR_SCORE = 0.7
 
 def detections_from_detectron_data(detectron_data, image, timestamp):
     boxes, masks, _, labels = vis.convert_from_cls_format(
         detectron_data['boxes'], detectron_data['segmentations'],
         detectron_data['keypoints'])
 
-    masks = mask_util.decode(masks)  # Shape (height, width, num_masks)
-    masks = [masks[:, :, i] for i in range(masks.shape[-1])]
     mask_features = [None for mask in masks]
     if 'features' in detectron_data:
-        # features are of shape (num_segments, d, w, h). Average over w and
-        # h, and convert to a list of length n with each element an array
-        # of shape (d, ).
-        mask_features = [
-            x.mean(axis=(1, 2)) for x in detectron_data['features']
-        ]
+        # features are of shape (num_segments, d)
+        mask_features = list(detectron_data['features'])
     assert len(boxes) == len(masks) == len(labels)
     detections = [
         Detection(box[:4], box[4], label, timestamp, image, mask,
@@ -46,6 +43,10 @@ def save_image(image_np, output_path):
     PIL.Image.fromarray(image_np).save(output_path)
 
 
+def compute_histogram_helper(detection):
+    return detection.compute_histogram()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
@@ -55,6 +56,15 @@ def main():
     parser.add_argument('--output-neighbors-dir', required=True)
     parser.add_argument('--extension', default='.png')
     parser.add_argument('--dataset', default='coco', choices=['coco'])
+    parser.add_argument(
+        '--filename-format',
+        choices=['frame', 'sequence_frame', 'fbms'],
+        default='frame',
+        help=('Specifies how to get frame number from the filename. '
+              '"frame": the filename is the frame number, '
+              '"sequence_frame": the frame number is separated by an '
+              'underscore'
+              '"fbms": assume fbms style frame numbers'))
     parser.add_argument('--num-queries', default=5, type=int,
                         help='How many queries to visualize neighbors for')
     parser.add_argument('--num-neighbors', default=50, type=int,
@@ -75,6 +85,17 @@ def main():
         raise ValueError(
             '--detectron-dir %s is not a directory!' % args.detectron_dir)
 
+    if args.filename_format == 'fbms':
+        from utils.fbms.utils import get_framenumber
+    elif args.filename_format == 'sequence_frame':
+        def get_framenumber(x):
+            return int(x.split('_')[-1])
+    elif args.filename_format == 'frame':
+        get_framenumber = int
+    else:
+        raise ValueError(
+            'Unknown --filename-format: %s' % args.filename_format)
+
     data = {}
     for x in detectron_input.glob('*.pickle'):
         if x.stem == 'merged':
@@ -83,7 +104,7 @@ def main():
             continue
 
         try:
-            int(x.stem)
+            get_framenumber(x.stem)
         except ValueError:
             logging.fatal('Expected pickle files to be named <frame_id>.pickle'
                           ', found %s.' % x)
@@ -92,15 +113,25 @@ def main():
         with open(x, 'rb') as f:
             data[x.stem] = pickle.load(f)
 
-    frames = sorted(data.keys(), key=lambda x: int(x))
-    sampled_frames = random.sample(frames, args.num_queries)
-    logging.info('Loading images')
-    images = {}
-    for name in tqdm(frames):
+    frames = sorted(data.keys(), key=get_framenumber)
+
+    logging.info('Loading detections and images')
+    detections_by_frame = {}
+    for frame in tqdm(frames):
+        timestamp = get_framenumber(frame)
         image = cv2.imread(
-            os.path.join(args.images_dir, name + args.extension))
+            os.path.join(args.images_dir, frame + args.extension))
         image = image[:, :, ::-1]  # BGR -> RGB
-        images[name] = image
+        detections = detections_from_detectron_data(
+            data[frame], image, timestamp)
+        detections_by_frame[frame] = [
+            x for x in detections if x.score >= MIN_NEIGHBOR_SCORE
+        ]
+
+    logging.info('Precomputing histograms')
+    flattened_detections = [x for y in detections_by_frame.values() for x in y]
+    Parallel(n_jobs=8)(delayed(lambda x: x.compute_histogram())(d)
+                       for d in tqdm(flattened_detections))
 
     logging.info('Finding neighbors')
     mask_color = [205, 168, 255]
@@ -116,20 +147,23 @@ def main():
     """
     neighbor_format = "<img class='neighbor' src='{neighbor_path}' />"
     output_html = ''
-    for query_name in tqdm(sampled_frames):
-        query_timestamp = int(query_name)
-        query_image = images[query_name]
-        query_data = data[query_name]
 
-        query_detections = detections_from_detectron_data(
-            query_data, query_image, query_timestamp)
+    sampled_frames = random.sample([
+        frame for frame in frames
+        if any(d.score >= MIN_QUERY_SCORE for d in detections_by_frame[frame])
+    ], args.num_queries)
+    for query_name in tqdm(sampled_frames):
+        query_detections = [
+            x for x in detections_by_frame[query_name]
+            if x.score >= MIN_QUERY_SCORE
+        ]
         query_detections = [x for x in query_detections if x.label == 1]
         query_detection = random.choice(query_detections)
 
         # Save query image
         query_image_mask = vis.vis_mask(
             query_detection.image,
-            query_detection.mask,
+            query_detection.decoded_mask(),
             color=mask_color,
             alpha=0.0,
             border_thick=5)
@@ -138,16 +172,17 @@ def main():
                    os.path.join(args.output_neighbors_dir, query_path))
 
         neighbors = NeighborsQueue(maxsize=args.num_neighbors)
-        for timestamp, name in enumerate(tqdm(frames)):
-            image = images[name]
-            frame_data = data[name]
-            detections = detections_from_detectron_data(
-                frame_data, image, timestamp)
-            for detection in detections:
-                distance = cosine(query_detection.mask_feature,
-                                  detection.mask_feature)
-                # distance = histogram_distance(query_detection, detection)
-                neighbors.put(detection, distance)
+
+        Parallel(n_jobs=8)(delayed(lambda x: x.compute_histogram())(d)
+                           for d in tqdm(flattened_detections))
+
+        query_histogram = query_detection.compute_histogram()[0]
+        dist_fn = delayed(chi_square_distance)
+        distances = Parallel(n_jobs=8)(dist_fn(query_histogram,
+                                               d.compute_histogram()[0])
+                                       for d in tqdm(flattened_detections))
+        for detection, distance in zip(flattened_detections, distances):
+            neighbors.put(detection, distance)
 
         # List of (detection, distance) tuples.
         neighbors_list = [neighbors.get() for _ in range(args.num_neighbors)]
@@ -159,7 +194,7 @@ def main():
             neighbor_detection, distance = neighbor
             neighbor_mask = vis.vis_mask(
                 neighbor_detection.image,
-                neighbor_detection.mask,
+                neighbor_detection.decoded_mask(),
                 color=mask_color,
                 alpha=0.0,
                 border_thick=5)
