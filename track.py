@@ -305,6 +305,8 @@ def visualize_detections(image,
                          dataset,
                          box_alpha=0.7,
                          dpi=200):
+    if not detections:
+        return image
     label_list = get_classes(dataset)
 
     # Display in largest to smallest order to reduce occlusion
@@ -381,7 +383,7 @@ def main():
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
               '"sequence_frame": the frame number is separated by an '
-                                'underscore'
+                                 'underscore'
               '"fbms": assume fbms style frame numbers'))
 
     args = parser.parse_args()
@@ -471,8 +473,6 @@ def main():
             if box[4] > CONTINUE_TRACK_THRESHOLD  #  and label == 1  # person
         ]
         matched_tracks = match_detections(current_tracks, detections)
-        # print('Timestamp: %s, Num matched tracks: %s' %
-        #       (timestamp, len([x for x in matched_tracks if x is not None])))
 
         continued_tracks = []
         for detection, track in zip(detections, matched_tracks):
