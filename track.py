@@ -32,6 +32,7 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 MAX_SKIP = 30
 
 SPATIAL_THRESHOLD = 0.00005
+AREA_RATIO_THRESHOLD = 0.5
 IOU_GAP = 0.3
 MIN_IOU = 0
 APPEARANCE_FEATURE = 'mask'  # one of 'mask' or 'histogram'
@@ -246,19 +247,35 @@ def match_detections(tracks, detections):
         key=lambda index: detections[index].score,
         reverse=True)
 
-    # Stage 1: Match tracks to detections with good mask IOU.
-    candidates = collections.defaultdict(list)
+    candidates = {track.id: sorted_indices.copy() for track in tracks}
+
+    # Stage 1: Keep candidates with similar areas only.
+    for track in tracks:
+        track_area = track.detections[-1].compute_area()
+        if track_area == 0:
+            candidates[track.id] = 0
+            continue
+        new_candidates = []
+        for i in candidates[track.id]:
+            d = detections[i]
+            area = d.compute_area()
+            if (area > 0 and (area / track_area) > AREA_RATIO_THRESHOLD
+                    and (track_area / area) > AREA_RATIO_THRESHOLD):
+                new_candidates.append(i)
+        candidates[track.id] = new_candidates
+
+    # Stage 2: Match tracks to detections with good mask IOU.
     for track in tracks:
         track_ious = {}
         track_detection = track.detections[-1]
-        for i in sorted_indices:
+        for i in candidates[track.id]:
             already_matched = matched_tracks[i] is not None
             different_label = track_detection.label != detections[i].label
             too_far = (track_distance(track, detections[i]) >
                        SPATIAL_THRESHOLD)
             if already_matched or different_label or too_far:
                 continue
-            track_ious[i] = track_detection.mask_iou(detections[i])
+            track_ious[i] = track_detection.centered_mask_iou(detections[i])
         if not track_ious:
             continue
 
@@ -273,7 +290,7 @@ def match_detections(tracks, detections):
                 d for d, iou in sorted_ious if iou >= MIN_IOU
             ]
 
-    # Stage 2: Match tracks to detections with good appearance threshold.
+    # Stage 3: Match tracks to detections with good appearance threshold.
     for track in tracks:
         candidates[track.id] = [
             i for i in candidates[track.id] if matched_tracks[i] is None
