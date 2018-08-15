@@ -511,6 +511,7 @@ def main():
         for track in filtered_tracks:
             for detection in track.detections:
                 detections_by_frame[detection.timestamp].append(detection)
+        assert len(detections_by_frame) > 0
 
         output_str = ''
         # The last three fields are 'x', 'y', and 'z', and are only used for
