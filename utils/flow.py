@@ -70,12 +70,21 @@ def compute_flow_color(angle, radius):
     which is itself an adaptation of the Middlebury flow code
     <http://vision.middlebury.edu/flow/>.
 
-    TODO(achald): Clean up this code.
+    Args:
+        angle (float): Output of np.arctan2(y, x). In range [-pi, pi].
+        magnitude (float): Normalized magnitude (between 0 and 1)
     """
     colorwheel = make_colorwheel()
+    # The original computeColor code expected angle to be the output of
+    # np.arctan(-y, -x), which is np.arctan(y, x) rotated by pi radians. So,
+    # first add pi to rotate, and then handle the values >pi.
+    positive_angles = angle >= 0
+    angle[positive_angles] -= np.pi
+    angle[~positive_angles] += np.pi
 
     num_colors = colorwheel.shape[0]
-    fk = (angle + 1) / 2 * (num_colors - 1)  # -1~1 maped to 1~num_colors
+    # -pi~pi maped to 1~num_colors
+    fk = (angle / np.pi + 1) / 2 * (num_colors - 1)
     k0 = fk.astype(np.uint8)  # 1, 2, ..., num_colors
     k1 = k0 + 1
     k1[k1 == num_colors] = 0
