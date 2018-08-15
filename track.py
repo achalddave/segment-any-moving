@@ -80,8 +80,9 @@ class Detection():
         }
 
     def contour_moments(self):
-        if self._cached_values['contour_moments'] is not None:
-            self._cached_values['contour_moments'] = cv2.moments(self.decoded_mask())
+        if self._cached_values['contour_moments'] is None:
+            self._cached_values['contour_moments'] = cv2.moments(
+                self.decoded_mask())
         return self._cached_values['contour_moments']
 
     def compute_center(self):
