@@ -153,8 +153,9 @@ class Detection():
         #     recognition from abbey to zoo." Computer vision and pattern
         #     recognition (CVPR), 2010 IEEE conference on. IEEE, 2010.
         # https://www.cc.gatech.edu/~hays/papers/sun.pdf
-        if hasattr(self, 'mask_histogram'):
-            return self.mask_histogram, self.mask_histogram_edges
+        if 'mask_histogram' in self._cached_values:
+            return (self._cached_values['mask_histogram'],
+                    self._cached_values['mask_histogram_edges'])
         # (num_pixels, num_channels)
         mask_pixels = self.image[np.nonzero(self.decoded_mask())]
         # rgb2lab expects a 3D tensor with colors in the last dimension, so
@@ -162,15 +163,18 @@ class Detection():
         mask_pixels = mask_pixels[np.newaxis]
         mask_pixels = skimage.color.rgb2lab(mask_pixels)[0]
         # TODO(achald): Check if the range for LAB is correct.
-        self.mask_histogram, self.mask_histogram_edges = np.histogramdd(
+        mask_histogram, mask_histogram_edges = np.histogramdd(
             mask_pixels,
             bins=[4, 14, 14],
             range=[[0, 100], [-127, 128], [-127, 128]])
-        normalizer = self.mask_histogram.sum()
+        normalizer = mask_histogram.sum()
         if normalizer == 0:
             normalizer = 1
-        self.mask_histogram /= normalizer
-        return self.mask_histogram, self.mask_histogram_edges
+        mask_histogram /= normalizer
+        self._cached_values['mask_histogram'] = mask_histogram
+        self._cached_values['mask_histogram_edges'] = mask_histogram_edges
+        return (self._cached_values['mask_histogram'],
+                self._cached_values['mask_histogram_edges'])
 
 
 class Track():
