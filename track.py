@@ -35,12 +35,12 @@ SPATIAL_THRESHOLD = 0.00005
 AREA_RATIO_THRESHOLD = 0.5
 IOU_GAP = 0.3
 MIN_IOU = 0
-APPEARANCE_FEATURE = 'mask'  # one of 'mask' or 'histogram'
+APPEARANCE_FEATURE = 'histogram'  # one of 'mask' or 'histogram'
 assert APPEARANCE_FEATURE in ('mask', 'histogram')
 if APPEARANCE_FEATURE == 'mask':
     APPEARANCE_GAP = 0.5
 else:
-    APPEARANCE_GAP = 0.3
+    APPEARANCE_GAP = 0.0
 
 
 def decay_weighted_mean(values, sigma=5):
