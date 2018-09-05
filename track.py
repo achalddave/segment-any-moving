@@ -345,27 +345,27 @@ def visualize_detections(image,
 
         # Draw spatial distance threshold
         area = detection.image.shape[0] * detection.image.shape[1]
-        cv2.circle(
-            image, (int(cx), int(cy)),
-            radius=int(area * SPATIAL_THRESHOLD),
-            thickness=1,
-            color=color)
+        # cv2.circle(
+        #     image, (int(cx), int(cy)),
+        #     radius=int(area * SPATIAL_THRESHOLD),
+        #     thickness=1,
+        #     color=color)
 
-        if detection.track.velocity is not None:
-            vx, vy = detection.track.velocity
-            # Expand for visualization
-            vx *= 2
-            vy *= 2
-            logging.info(
-                'Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
-            cv2.arrowedLine(
-                image, (int(cx), int(cy)), (int(cx + vx), int(cy + vy)),
-                color=color,
-                thickness=3,
-                tipLength=1.0)
-        else:
-            cv2.circle(
-                image, (int(cx), int(cy)), radius=3, thickness=1, color=color)
+        # if detection.track.velocity is not None:
+        #     vx, vy = detection.track.velocity
+        #     # Expand for visualization
+        #     vx *= 2
+        #     vy *= 2
+        #     logging.info(
+        #         'Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
+        #     cv2.arrowedLine(
+        #         image, (int(cx), int(cy)), (int(cx + vx), int(cy + vy)),
+        #         color=color,
+        #         thickness=3,
+        #         tipLength=1.0)
+        # else:
+        #     cv2.circle(
+        #         image, (int(cx), int(cy)), radius=3, thickness=1, color=color)
         image = vis.vis_mask(
             image,
             detection.decoded_mask(),
