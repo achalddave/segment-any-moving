@@ -346,8 +346,8 @@ def visualize_detections(image,
         # Draw spatial distance threshold
         area = detection.image.shape[0] * detection.image.shape[1]
         cv2.circle(
-            image, (cx, cy),
-            radius=int(area * SPATIAL_DISTANCE_THRESHOLD),
+            image, (int(cx), int(cy)),
+            radius=int(area * SPATIAL_THRESHOLD),
             thickness=1,
             color=color)
 
@@ -364,7 +364,8 @@ def visualize_detections(image,
                 thickness=3,
                 tipLength=1.0)
         else:
-            cv2.circle(image, (cx, cy), radius=3, thickness=1, color=color)
+            cv2.circle(
+                image, (int(cx), int(cy)), radius=3, thickness=1, color=color)
         image = vis.vis_mask(
             image,
             detection.decoded_mask(),
