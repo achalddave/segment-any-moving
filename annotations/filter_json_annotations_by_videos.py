@@ -47,6 +47,7 @@ def main():
     images = []
     image_ids = set()
     present_sequences = set()
+    valid_sequences = set(valid_sequences)
     for image in data['images']:
         sequence = str(PurePath(image['file_name']).parent)
         present_sequences.add(sequence)
