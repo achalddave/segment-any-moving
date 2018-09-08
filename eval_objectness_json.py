@@ -85,12 +85,12 @@ def main():
                 'score': score
             })
 
-    box_output = output_root / 'bbox_fbms_results.json'
+    box_output = output_root / 'bbox_results.json'
     logging.info('Writing box results to %s' % box_output)
     with open(box_output, 'w') as f:
         json.dump(detection_results, f)
 
-    segmentation_output = output_root / 'segmentation_fbms_results.json'
+    segmentation_output = output_root / 'segmentation_results.json'
     logging.info('Writing segmentation results to %s' % segmentation_output)
     with open(segmentation_output, 'w') as f:
         json.dump(segmentation_results, f)
