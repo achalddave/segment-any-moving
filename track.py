@@ -275,7 +275,7 @@ def match_detections(tracks, detections):
                        SPATIAL_THRESHOLD)
             if already_matched or different_label or too_far:
                 continue
-            track_ious[i] = track_detection.centered_mask_iou(detections[i])
+            track_ious[i] = track_detection.mask_iou(detections[i])
         if not track_ious:
             continue
 
