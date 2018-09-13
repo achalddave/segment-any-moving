@@ -17,6 +17,8 @@ from utils.log import setup_logging
 def visualize_flow(flow_or_path, output_visualization, maximum_magnitude=None):
     if isinstance(flow_or_path, str) or isinstance(flow_or_path, Path):
         flow = load_flow_png(str(flow_or_path))
+        diagonal = (flow.shape[0]**2 + flow.shape[1]**2)**0.5
+        flow[:, :, 1] = flow[:, :, 1].clip(max=diagonal)
     elif isinstance(flow_or_path, np.ndarray):
         flow = flow_or_path
     else:
@@ -92,6 +94,9 @@ def main():
                 flows = parallel(
                     delayed(load_flow_png)(str(path))
                     for path in tqdm(dir_flow_paths))
+                diagonal = (flows[0].shape[0]**2 + flows[0].shape[1]**2)**0.5
+                for flow in flows:
+                    flow[:, :, 1] = flow[:, :, 1].clip(max=diagonal)
                 maximum_magnitude = max(flow[:, :, 1].max() for flow in flows)
 
                 tasks = [(flow_path, output_paths[flow_path])
