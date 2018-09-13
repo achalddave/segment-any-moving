@@ -2,8 +2,8 @@
 
 import argparse
 import logging
-import subprocess
 import os
+import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
