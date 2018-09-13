@@ -1,6 +1,7 @@
 """Compute LiteFlowNet flow on videos."""
 
 import argparse
+import contextlib
 import logging
 import os
 import subprocess
@@ -18,10 +19,18 @@ from liteflownet.convert_flo_png import convert_flo
 from utils.log import setup_logging
 
 
+@contextlib.contextmanager
+def gpu_from_queue(gpu_queue):
+    gpu = gpu_queue.get()
+    yield gpu
+    gpu_queue.put(gpu)
+
+
 def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
-                          flownet_root, tmp_prefix, gpu, logger_name,
+                          flownet_root, tmp_prefix, gpu_queue, logger_name,
                           convert_png):
-    start_time = time.time()
+    times = {}
+    times['start'] = time.time()
     file_logger = logging.getLogger(logger_name)
     dimensions = None
     for image_path in image_paths:
@@ -70,7 +79,10 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                                                os.environ['LD_LIBRARY_PATH'])
 
     if flo_input_outputs:
-        with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f:
+        times['gpu_wait_start'] = time.time()
+        with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f, \
+                gpu_from_queue(gpu_queue) as gpu:
+            times['gpu_wait_end'] = time.time()
             for frame1, frame2, output_flo in flo_input_outputs:
                 input_list_f.write('%s %s %s\n' % (frame1, frame2, output_flo))
             input_list_f.flush()
@@ -89,6 +101,8 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                 logging.fatal('Failed command.\nException: %s\nOutput %s',
                               e.returncode, e.output)
                 raise
+    else:
+        times['gpu_wait_start'] = times['gpu_wait_end'] = 0
 
     # png_input_outputs will be empty if convert_png=False or if we have
     # already converted all the flows.
@@ -100,7 +114,8 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
             raise e
         flo_path.unlink()
 
-    time_taken = time.time() - start_time
+    time_taken = (time.time() - times['start']) - (
+        times['gpu_wait_end'] - times['gpu_wait_start'])
     if not flo_input_outputs and not png_input_outputs:
         file_logger.info(
             'Output dir %s was already processed, skipping. Time taken: %s' %
@@ -111,14 +126,7 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
 
 
 def compute_sequence_flow_gpu_helper(kwargs):
-    gpu_queue = kwargs['gpu_queue']
-    gpu = gpu_queue.get()
-    try:
-        del kwargs['gpu_queue']
-        kwargs['gpu'] = gpu
-        return compute_sequence_flow(**kwargs)
-    finally:
-        gpu_queue.put(gpu)
+    return compute_sequence_flow(**kwargs)
 
 
 def main():
@@ -152,6 +160,15 @@ def main():
               '.flo files around.'),
         action='store_true')
     parser.add_argument('--gpus', default=[0, 1, 2, 3], nargs='*', type=int)
+    parser.add_argument(
+        '--num-workers',
+        default=-1,
+        type=int,
+        help=('Number of workers. By default, set to the number of GPUs. '
+              'Having more workers than GPUs allows some workers to process '
+              'CPU operations, like loading input/output lists, checking '
+              'image dimensions, and converting .flo to .png while other '
+              'workers use the GPU.'))
 
     args = parser.parse_args()
 
@@ -207,7 +224,9 @@ def main():
     import multiprocessing as mp
     manager = mp.Manager()
     gpu_queue = manager.Queue()
-    pool = mp.Pool(len(args.gpus))
+    if args.num_workers == -1:
+        args.num_workers = len(args.gpus)
+    pool = mp.Pool(args.num_workers)
     for gpu in args.gpus:
         gpu_queue.put(gpu)
 
