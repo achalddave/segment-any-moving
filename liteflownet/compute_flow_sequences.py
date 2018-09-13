@@ -23,15 +23,15 @@ def compute_sequence_flow(image_paths, output_dir, proto_template, cnn_model,
     file_logger = logging.getLogger(logger_name)
     dimensions = None
     for image_path in image_paths:
-        image = np.array(Image.open(image_path))
+        image_size = Image.open(image_path).size
         if dimensions is None:
-            dimensions = image.shape
+            dimensions = image_size
         else:
-            assert dimensions == image.shape, (
+            assert dimensions == image_size, (
                 'Image sizes in sequence do not match (%s: %s, vs %s: %s)' %
-                (image_paths[0], dimensions, image_path, image.shape))
+                (image_paths[0], dimensions, image_path, image_size))
 
-    height, width, _ = dimensions
+    width, height = dimensions
     divisor = 32
     adapted_width = ceil(width / divisor) * divisor
     adapted_height = ceil(height / divisor) * divisor
