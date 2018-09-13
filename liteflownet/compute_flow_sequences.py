@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures as fs
 import logging
 import subprocess
+from datetime import datetime
 from math import ceil
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -157,7 +158,9 @@ def main():
     output_root.mkdir(parents=True)
 
     file_name = Path(__file__).stem
-    logging_path = str(output_root / (file_name + '.py.log'))
+    logging_path = str(
+        output_root /
+        (file_name + '.py.%s.log' % datetime.now().strftime('%b%d-%H-%M-%S')))
     setup_logging(logging_path)
     logging.info('Args:\n%s', vars(args))
 
@@ -215,7 +218,6 @@ def main():
         tqdm(
             pool.imap_unordered(compute_sequence_flow_gpu_helper, tasks),
             total=len(tasks)))
-
 
 
 if __name__ == "__main__":
