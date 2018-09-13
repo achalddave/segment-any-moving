@@ -4,6 +4,8 @@ import argparse
 import logging
 import os
 import subprocess
+import time
+from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -19,6 +21,7 @@ from utils.log import setup_logging
 def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                           flownet_root, tmp_prefix, gpu, logger_name,
                           convert_png):
+    start_time = time.time()
     file_logger = logging.getLogger(logger_name)
     dimensions = None
     for image_path in image_paths:
@@ -39,10 +42,26 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
     #
     # (where list.txt contains lines of the form "x.png y.png z.flo")
 
-    input_outputs = []  # list of (frame1_path, frame2_path, output_path)
+    # List of tuples: (frame1_path, frame2_path, output_flo)
+    flo_input_outputs = []
+
+    # List of tuples: (flo_input, output_png, output_metadata).
+    # If convert_png=False, this list is empty.
+    png_input_outputs = []
+
     for frame1, frame2 in zip(image_paths[:-1], image_paths[1:]):
-        input_outputs.append((frame1, frame2,
-                              output_dir / (frame1.stem + '.flo')))
+        flo = output_dir / (frame1.stem + '.flo')
+
+        if convert_png:
+            png = flo.with_suffix('.png')
+            metadata = flo.with_name(flo.stem + '_magnitude_minmax.txt')
+            # Already computed everything, skip this frame pair.
+            if png.exists() and metadata.exists():
+                continue
+            png_input_outputs.append((flo, png, metadata))
+
+        if not flo.exists():
+            flo_input_outputs.append((frame1, frame2, flo))
 
     os.environ['CAFFE_PATH'] = str(flownet_root)
     os.environ['PYTHONPATH'] = '%s:%s' % (flownet_root / 'python',
@@ -50,33 +69,41 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
     os.environ['LD_LIBRARY_PATH'] = '%s:%s' % (flownet_root / 'build' / 'lib',
                                                os.environ['LD_LIBRARY_PATH'])
 
-    with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f:
-        for frame1, frame2, output_file in input_outputs:
-            input_list_f.write('%s %s %s\n' % (frame1, frame2, output_file))
-        input_list_f.flush()
+    if flo_input_outputs:
+        with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f:
+            for frame1, frame2, output_flo in flo_input_outputs:
+                input_list_f.write('%s %s %s\n' % (frame1, frame2, output_flo))
+            input_list_f.flush()
 
-        command = [
-            'python', str(flownet_root / 'scripts' / 'run-flownet-many.py'),
-            str(caffe_model), str(prototxt), input_list_f.name,
-            '--gpu', str(gpu)
-        ]
+            command = [
+                'python',
+                str(flownet_root / 'scripts' / 'run-flownet-many.py'),
+                str(caffe_model), str(prototxt), input_list_f.name,
+                '--gpu', str(gpu)
+            ]
 
-        file_logger.info('Executing %s' % ' '.join(command))
-        try:
-            subprocess.check_output(command, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            logging.fatal('Failed command.\nException: %s\nOutput %s',
-                          e.returncode, e.output)
-            raise
+            file_logger.info('Executing %s' % ' '.join(command))
+            try:
+                subprocess.check_output(command, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                logging.fatal('Failed command.\nException: %s\nOutput %s',
+                              e.returncode, e.output)
+                raise
 
-        for input_path, _, output_path in input_outputs:
-            if convert_png:
-                output_flo_png = (
-                    output_dir / input_path.stem).with_suffix('.png')
-                output_flo_metadata = (
-                    output_dir / (input_path.stem + '_magnitude_minmax.txt'))
-                convert_flo(output_path, output_flo_png, output_flo_metadata)
-                output_path.unlink()
+    # png_input_outputs will be empty if convert_png=False or if we have
+    # already converted all the flows.
+    for flo_path, png_path, metadata_path in png_input_outputs:
+        convert_flo(flo_path, png_path, metadata_path)
+        flo_path.unlink()
+
+    time_taken = time.time() - start_time
+    if not flo_input_outputs and not png_input_outputs:
+        file_logger.info(
+            'Output dir %s was already processed, skipping. Time taken: %s' %
+            (output_dir, time_taken))
+    else:
+        file_logger.info(
+            'Processed %s. Time taken: %s' % (output_dir, time_taken))
 
 
 def compute_sequence_flow_gpu_helper(kwargs):
@@ -125,10 +152,12 @@ def main():
 
     input_root = Path(args.input_dir)
     output_root = Path(args.output_dir)
-    output_root.mkdir(parents=True)
+    output_root.mkdir(parents=True, exist_ok=True)
 
     file_name = Path(__file__).stem
-    logging_path = str(output_root / (file_name + '.py.log'))
+    logging_path = str(
+        output_root /
+        (file_name + '.py.%s.log' % datetime.now().strftime('%b%d-%H-%M-%S')))
     setup_logging(logging_path)
     logging.info('Args:\n%s', vars(args))
 
