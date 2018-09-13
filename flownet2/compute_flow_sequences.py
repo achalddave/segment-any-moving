@@ -137,7 +137,8 @@ def main():
         action='store_true',
         help="""Search recursively in input-dir for sequences. Any directory
                 containing a file with extension specified by --extension is
-                treated as a sequence directory.""")
+                treated as a sequence directory. NOTE: Does not support
+                symlinked directories.""")
     parser.add_argument('--extension', default='.png')
     parser.add_argument(
         '--cnn-model',
