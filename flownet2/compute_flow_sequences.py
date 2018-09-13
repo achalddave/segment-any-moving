@@ -93,7 +93,11 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
     # png_input_outputs will be empty if convert_png=False or if we have
     # already converted all the flows.
     for flo_path, png_path, metadata_path in png_input_outputs:
-        convert_flo(flo_path, png_path, metadata_path)
+        try:
+            convert_flo(flo_path, png_path, metadata_path)
+        except Exception as e:
+            logging.error('ERROR converting flo path: %s' % flo_path)
+            raise e
         flo_path.unlink()
 
     time_taken = time.time() - start_time
