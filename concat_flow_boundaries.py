@@ -30,7 +30,7 @@ def concat_flows(flow_path, boundary_path, output_path, copy_magnitude):
             'Boundary png (%s) could not be loaded properly.' % boundary_path)
     flow[:, :, 2] = boundary
     flow = Image.fromarray(flow)
-    output_path.parent.mkdir(exist_ok=True)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
     flow.save(output_path)
     if copy_magnitude:
         magnitude_path = flow_path.with_name(flow_path.stem +
