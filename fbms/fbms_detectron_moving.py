@@ -81,14 +81,17 @@ def main():
         '--save-pickle',
         action='store_true')
     parser.add_argument('--moving-threshold', default=0.5, type=float)
-    parser.add_argument('--output-dir', required=True) 
+    parser.add_argument('--output-dir', required=True)
     args = parser.parse_args()
 
     detectron_root = Path(args.detectron_root)
     motion_root = Path(args.motion_masks_root)
+
     dataset = COCO(args.fbms_annotation_json)
+
     output_root = Path(args.output_dir)
     output_root.mkdir(parents=True)
+
     logging_path = str(output_root / (Path(__file__).stem + '.log'))
     setup_logging(logging_path)
 
@@ -100,23 +103,30 @@ def main():
     # Map (sequence, frame_name) to frame_id.
     frame_key_to_id = {}
     for annotation in dataset.imgs.values():
+        # Path ends in 'sequence/frame_name'
         path = Path(annotation['file_name'])
-        sequence = path.parent.stem
-        frame_key_to_id[(sequence, path.stem)] = annotation['id']
+        frame_key_to_id[(path.parent.stem, path.stem)] = annotation['id']
 
     # Map image paths to dict containing 'boxes', 'segmentations'
     logging.info('Loading motion paths')
     # Map sequence to dict mapping frame index to motion mask path
     motion_mask_paths = {}
-    for sequence_path in tqdm(list(motion_root.iterdir())):
+    for sequence_path in motion_root.iterdir():
         if not sequence_path.is_dir():
             continue
 
         sequence = sequence_path.stem
         motion_mask_paths[sequence] = {}
-        for motion_path in sequence_path.glob('{}*.png'.format(sequence)):
+        for motion_path in sequence_path.glob('*.png'.format(sequence)):
+            # Pavel's ICCV 2017 method outputs an extra set of soft masks that
+            # start with 'raw_' or 'input_'; ignore them by starting the glob
+            # with the sequence name.
+            if (motion_path.stem.startswith('raw_')
+                    or motion_path.stem.startswith('input_')):
+                continue
             frame_index = fbms_utils.get_framenumber(motion_path.stem)
             motion_mask_paths[sequence][frame_index] = motion_path
+
         # The last frame doesn't have a motion segmentation mask, so we use the
         # second to last frame's motion mask as the last frame's motion mask.
         last_frame = max(motion_mask_paths[sequence].keys()) + 1
@@ -124,7 +134,9 @@ def main():
             motion_mask_paths[sequence][last_frame - 1])
 
     logging.info('Loading detectron paths')
-    predictions = {}  # Map (sequence, frame_name) to predictions
+    # Map (sequence, frame_name) to dictionary containining keys 'boxes', and
+    # 'segmentations'.
+    predictions = {}
     for sequence_path in tqdm(list(detectron_root.iterdir())):
         if not sequence_path.is_dir():
             continue
