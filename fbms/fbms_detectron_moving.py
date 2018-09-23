@@ -22,6 +22,42 @@ from utils.log import setup_logging
 from utils import vis
 
 
+def translate_range(value, old_range, new_range):
+    """
+    Translate value in one range to another. Useful for scaling scores.
+
+    >>> translate_range(0.5, (0, 1), (0, 2))
+    1.0
+    >>> translate_range(1, (0, 1), (0, 2))
+    2.0
+    >>> translate_range(3, (2, 4), (5, 6))
+    5.5
+    >>> translate_range(0.5, (0, 1), (0, 2))
+    1.0
+    >>> translate_range(np.array([2, 2.5, 3, 3.5, 4]), (2, 4), (5, 7)).tolist()
+    [5.0, 5.5, 6.0, 6.5, 7.0]
+    >>> translate_range(np.array([2, 2.5, 3, 3.5, 4]), (2, 4), (5, 5)).tolist()
+    [5.0, 5.0, 5.0, 5.0, 5.0]
+    """
+    value = np.asarray(value)
+    old_min, old_max = old_range
+
+    if np.any(value < old_min):
+        raise ValueError('Value(s) (%s) < min(old_range) (%s)' %
+                         (value[value < old_min], old_min))
+
+    if np.any(value > old_max):
+        raise ValueError('Value(s) (%s) > max(old_range) (%s)' %
+                         (value[value > old_max], old_max))
+
+    if (old_max - old_min) < 1e-10:
+        return old_max
+
+    new_min, new_max = new_range
+    scale = (new_max - new_min) / (old_max - old_min)
+    return (value - old_min) * scale + new_min
+
+
 def main():
     with open(__file__, 'r') as f:
         _file_source = f.read()
@@ -43,11 +79,12 @@ def main():
         help='Directory containing outputs of detectron on FBMS.',
         required=True)
     parser.add_argument(
-        '--visualize',
+        '--save-pickle',
         action='store_true')
-    parser.add_argument('--output-dir', required=True)
-
+    parser.add_argument('--moving-threshold', default=0.5, type=float)
+    parser.add_argument('--output-dir', required=True) 
     args = parser.parse_args()
+
     detectron_root = Path(args.detectron_root)
     motion_root = Path(args.motion_masks_root)
     dataset = COCO(args.fbms_annotation_json)
@@ -56,17 +93,19 @@ def main():
     logging_path = str(output_root / (Path(__file__).stem + '.log'))
     setup_logging(logging_path)
 
-    with open(output_root / (Path(__name__).stem + '.py'), 'w') as f:
-        f.write(_file_source)
+    file_logger = logging.getLogger(logging_path)
+    file_logger.info('Source:\n%s' % _file_source)
 
     logging.info('Args:\n %s', pformat(vars(args)))
 
-    frame_id_paths = {
-        x['id']: PurePath(x['file_name'])
-        for x in dataset.imgs.values()
-    }
+    # Map (sequence, frame_name) to frame_id.
+    frame_key_to_id = {}
+    for annotation in dataset.imgs.values():
+        path = Path(annotation['file_name'])
+        sequence = path.parent.stem
+        frame_key_to_id[(sequence, path.stem)] = annotation['id']
+
     # Map image paths to dict containing 'boxes', 'segmentations'
-    predictions = {}
     logging.info('Loading motion paths')
     # Map sequence to dict mapping frame index to motion mask path
     motion_mask_paths = {}
@@ -76,7 +115,7 @@ def main():
 
         sequence = sequence_path.stem
         motion_mask_paths[sequence] = {}
-        for motion_path in sequence_path.glob('*.png'):
+        for motion_path in sequence_path.glob('{}*.png'.format(sequence)):
             frame_index = fbms_utils.get_framenumber(motion_path.stem)
             motion_mask_paths[sequence][frame_index] = motion_path
         # The last frame doesn't have a motion segmentation mask, so we use the
@@ -86,73 +125,101 @@ def main():
             motion_mask_paths[sequence][last_frame - 1])
 
     logging.info('Loading detectron paths')
-    for frame_id, frame_path in tqdm(frame_id_paths.items()):
-        # frame_path is of the form <split>/<sequence>/<frame_name>
-        _, sequence, frame_name = frame_path.parts
-        detectron_path = (
-            detectron_root / sequence / frame_name).with_suffix('.pickle')
-        if not detectron_path.exists():
-            raise ValueError(
-                'Could not find detectron path at %s' % detectron_path)
-        with open(detectron_path, 'rb') as f:
-            frame_data = pickle.load(f)
+    predictions = {}  # Map (sequence, frame_name) to predictions
+    for sequence_path in tqdm(list(detectron_root.iterdir())):
+        if not sequence_path.is_dir():
+            continue
 
-        predictions[frame_id] = {'boxes': [], 'segmentations': []}
-        for c in range(len(frame_data['boxes'])):
-            predictions[frame_id]['boxes'].extend(frame_data['boxes'][c])
-            predictions[frame_id]['segmentations'].extend(
-                frame_data['segmentations'][c])
+        for detectron_path in sequence_path.glob('*.pickle'):
+            with open(detectron_path, 'rb') as f:
+                frame_data = pickle.load(f)
+
+            if frame_data['segmentations'] is None:
+                frame_data['segmentations'] = [
+                    [] for _ in range(len(frame_data['boxes']))
+                ]
+            frame_key = (sequence_path.stem, detectron_path.stem)
+            predictions[frame_key] = {'boxes': [], 'segmentations': []}
+            if frame_data['segmentations'] is None:
+                continue
+            for c in range(len(frame_data['boxes'])):
+                predictions[frame_key]['boxes'].extend(frame_data['boxes'][c])
+                predictions[frame_key]['segmentations'].extend(
+                    frame_data['segmentations'][c])
 
     logging.info('Outputting moving detections')
     detection_results = []
     segmentation_results = []
-    if args.visualize:
-        output_images_dir = output_root / 'vis'
-    for frame_id, frame_path in tqdm(frame_id_paths.items()):
-        boxes = predictions[frame_id]['boxes']
-        segmentations = predictions[frame_id]['segmentations']
 
-        _, sequence, frame_name = frame_path.parts
+    for sequence, frame_name in tqdm(predictions.keys()):
+        frame_key = (sequence, frame_name)
+
+        # If --save-pickle is true, process every frame. Otherwise, only
+        # process frames that are in --fbms-annotations-json.
+        if not args.save_pickle and frame_key not in frame_key_to_id:
+            continue
+
+        boxes = predictions[frame_key]['boxes']
+        segmentations = predictions[frame_key]['segmentations']
+
         frame_index = fbms_utils.get_framenumber(frame_name)
         motion_mask = np.array(
             Image.open(motion_mask_paths[sequence][frame_index])) != 0
 
-        is_moving = []
-        for box, segmentation in zip(boxes, segmentations):
-            mask = mask_util.decode(segmentation)
-            moving_portion = (mask & motion_mask).sum() / mask.sum()
-            is_moving.append(True)
-
+        if args.save_pickle:
+            updated_boxes = []
+            updated_segmentations = []
         for i, (box, segmentation) in enumerate(zip(boxes, segmentations)):
-            if not is_moving[i]:
-                continue
+            mask = mask_util.decode(segmentation)
             x1, y1, x2, y2, score = box.tolist()
             w = x2 - x1 + 1
             h = y2 - y1 + 1
-            detection_results.append({
-                'image_id': frame_id,
-                'category_id': 1,
-                'bbox': [x1, y1, w, h],
-                'score': score
-            })
 
-            segmentation_results.append({
-                'image_id': frame_id,
-                'category_id': 1,
-                'segmentation': segmentation,
-                'score': score
-            })
+            if mask.sum() < 1e-10:
+                moving_portion = 0
+            else:
+                moving_portion = (mask & motion_mask).sum() / mask.sum()
 
-        if args.visualize:
-            output_image = np.zeros((motion_mask.shape[0],
-                                     motion_mask.shape[1], 3), dtype=np.uint8)
-            output_image = vis.vis_one_image_opencv(
-                output_image,
-                np.array([b for i, b in enumerate(boxes) if is_moving[i]]),
-                [s for i, s in enumerate(segmentations) if is_moving[i]])
-            output_path = output_images_dir / frame_path
+            if moving_portion < args.moving_threshold:
+                score = translate_range(score, (0, 1), (0, 0.5))
+            else:
+                score = translate_range(score, (0, 1), (0.5, 1))
+
+            if frame_key in frame_key_to_id:
+                frame_id = frame_key_to_id[frame_key]
+                detection_results.append({
+                    'image_id': frame_id,
+                    'category_id': 1,
+                    'bbox': [x1, y1, w, h],
+                    'score': score
+                })
+                segmentation_results.append({
+                    'image_id': frame_id,
+                    'category_id': 1,
+                    'segmentation': segmentation,
+                    'score': score
+                })
+
+            if args.save_pickle:
+                updated_boxes.append([x1, y1, x2, y2, score])
+                updated_segmentations.append(segmentation)
+
+        if args.save_pickle:
+            output_path = (output_root / 'pickle' / sequence /
+                           frame_name).with_suffix('.pickle')
             output_path.parent.mkdir(exist_ok=True, parents=True)
-            Image.fromarray(output_image).save(output_images_dir / frame_path)
+            with open(output_path, 'wb') as f:
+                # TODO(achald): Make this work for multiple classes.
+                updated_boxes = [[], updated_boxes]
+                if len(updated_segmentations):
+                    updated_segmentations = [[], updated_segmentations]
+                else:
+                    updated_segmentations = None
+                pickle.dump({
+                    'boxes': updated_boxes,
+                    'segmentations': updated_segmentations,
+                    'keypoints': [[], []]
+                }, f)
 
     box_output = output_root / 'bbox_fbms_results.json'
     logging.info('Writing box results to %s' % box_output)
