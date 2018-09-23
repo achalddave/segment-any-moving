@@ -6,7 +6,7 @@ import json
 import logging
 import pickle
 from contextlib import redirect_stdout
-from pathlib import Path, PurePath
+from pathlib import Path
 from pprint import pformat
 
 import numpy as np
@@ -19,7 +19,6 @@ from pycocotools.cocoeval import COCOeval
 
 import utils.fbms.utils as fbms_utils
 from utils.log import setup_logging
-from utils import vis
 
 
 def translate_range(value, old_range, new_range):
