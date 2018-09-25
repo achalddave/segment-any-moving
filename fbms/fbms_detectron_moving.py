@@ -17,7 +17,6 @@ import pycocotools.mask as mask_util
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
-import utils.fbms.utils as fbms_utils
 from utils.log import setup_logging
 
 
@@ -57,6 +56,77 @@ def translate_range(value, old_range, new_range):
     return (value - old_min) * scale + new_min
 
 
+def load_motion_masks(motion_root):
+    """Load motion masks from disk.
+
+    Args:
+        motion_root (Path): Points to a directory which contains a
+            subdirectory for each sequence, which in turn contains a .png for
+            each frame in the sequence.
+
+    Returns:
+        motion_masks (dict): Map sequence to dict mapping frame name to motion
+            mask path.
+    """
+    motion_mask_paths = {}
+    for sequence_path in motion_root.iterdir():
+        if not sequence_path.is_dir():
+            continue
+
+        sequence = sequence_path.stem
+        motion_mask_paths[sequence] = {}
+        for motion_path in sequence_path.glob('*.png'.format(sequence)):
+            # Pavel's ICCV 2017 method outputs an extra set of soft masks that
+            # start with 'raw_' or 'input_'; ignore them by starting the glob
+            # with the sequence name.
+            if (motion_path.stem.startswith('raw_')
+                    or motion_path.stem.startswith('input_')):
+                continue
+            motion_mask_paths[sequence][motion_path.stem] = motion_path
+    return motion_mask_paths
+
+
+def load_detectron_predictions(detectron_root):
+    """Load detectron predictions from root directort.
+
+    Args:
+        detectron_root (Path): Points to a directory which contains a
+            subdirectory for each sequence, which in turn contains a .pickle
+            file for each frame in the sequence.
+
+    Returns:
+        predictions (dict): Map sequence to dict mapping from frame name to
+            a dictionary containining keys 'boxes', and 'segmentations'.
+    """
+    predictions = {}
+    for sequence_path in detectron_root.iterdir():
+        if not sequence_path.is_dir():
+            continue
+
+        sequence = sequence_path.stem
+        predictions[sequence] = {}
+        for detectron_path in sequence_path.glob('*.pickle'):
+            with open(detectron_path, 'rb') as f:
+                frame_data = pickle.load(f)
+
+            if frame_data['segmentations'] is None:
+                frame_data['segmentations'] = [
+                    [] for _ in range(len(frame_data['boxes']))
+                ]
+
+            frame_name = detectron_path.stem
+            predictions[sequence][frame_name] = {
+                'boxes': [],
+                'segmentations': []
+            }
+            for c in range(len(frame_data['boxes'])):
+                predictions[sequence][frame_name]['boxes'].extend(
+                    frame_data['boxes'][c])
+                predictions[sequence][frame_name]['segmentations'].extend(
+                    frame_data['segmentations'][c])
+    return predictions
+
+
 def main():
     with open(__file__, 'r') as f:
         _file_source = f.read()
@@ -82,6 +152,14 @@ def main():
         action='store_true')
     parser.add_argument('--moving-threshold', default=0.5, type=float)
     parser.add_argument('--output-dir', required=True)
+    parser.add_argument(
+        '--filename-format', choices=['frame', 'sequence_frame', 'fbms'],
+        default='fbms',
+        help=('Specifies how to get frame number from the filename. '
+              '"frame": the filename is the frame number, '
+              '"sequence_frame": the frame number is separated by an '
+                                'underscore, '  # noqa: E127
+              '"fbms": assume fbms style frame numbers'))
     args = parser.parse_args()
 
     detectron_root = Path(args.detectron_root)
@@ -107,75 +185,52 @@ def main():
         path = Path(annotation['file_name'])
         frame_key_to_id[(path.parent.stem, path.stem)] = annotation['id']
 
-    # Map image paths to dict containing 'boxes', 'segmentations'
     logging.info('Loading motion paths')
     # Map sequence to dict mapping frame index to motion mask path
-    motion_mask_paths = {}
-    for sequence_path in motion_root.iterdir():
-        if not sequence_path.is_dir():
-            continue
-
-        sequence = sequence_path.stem
-        motion_mask_paths[sequence] = {}
-        for motion_path in sequence_path.glob('*.png'.format(sequence)):
-            # Pavel's ICCV 2017 method outputs an extra set of soft masks that
-            # start with 'raw_' or 'input_'; ignore them by starting the glob
-            # with the sequence name.
-            if (motion_path.stem.startswith('raw_')
-                    or motion_path.stem.startswith('input_')):
-                continue
-            frame_index = fbms_utils.get_framenumber(motion_path.stem)
-            motion_mask_paths[sequence][frame_index] = motion_path
-
-        # The last frame doesn't have a motion segmentation mask, so we use the
-        # second to last frame's motion mask as the last frame's motion mask.
-        last_frame = max(motion_mask_paths[sequence].keys()) + 1
-        motion_mask_paths[sequence][last_frame] = (
-            motion_mask_paths[sequence][last_frame - 1])
+    motion_mask_paths = load_motion_masks(motion_root)
 
     logging.info('Loading detectron paths')
-    # Map (sequence, frame_name) to dictionary containining keys 'boxes', and
-    # 'segmentations'.
-    predictions = {}
-    for sequence_path in tqdm(list(detectron_root.iterdir())):
-        if not sequence_path.is_dir():
-            continue
-
-        for detectron_path in sequence_path.glob('*.pickle'):
-            with open(detectron_path, 'rb') as f:
-                frame_data = pickle.load(f)
-
-            if frame_data['segmentations'] is None:
-                frame_data['segmentations'] = [
-                    [] for _ in range(len(frame_data['boxes']))
-                ]
-            frame_key = (sequence_path.stem, detectron_path.stem)
-            predictions[frame_key] = {'boxes': [], 'segmentations': []}
-            if frame_data['segmentations'] is None:
-                continue
-            for c in range(len(frame_data['boxes'])):
-                predictions[frame_key]['boxes'].extend(frame_data['boxes'][c])
-                predictions[frame_key]['segmentations'].extend(
-                    frame_data['segmentations'][c])
+    predictions = load_detectron_predictions(detectron_root)
 
     logging.info('Outputting moving detections')
     detection_results = []
     segmentation_results = []
 
-    for sequence, frame_name in tqdm(predictions.keys()):
-        frame_key = (sequence, frame_name)
+    if args.filename_format == 'fbms':
+        from utils.fbms.utils import get_framenumber
+    elif args.filename_format == 'sequence_frame':
+        def get_framenumber(x):
+            return int(x.split('_')[-1])
+    elif args.filename_format == 'frame':
+        get_framenumber = int
+    else:
+        raise ValueError(
+            'Unknown --filename-format: %s' % args.filename_format)
 
+    # The last frame won't have a motion mask, so we use the second to last
+    # frame's mask as the last frame's mask.
+    for sequence in predictions.keys():
+        frame_index_names = sorted(
+            predictions[sequence].keys(), key=lambda x: get_framenumber(x))
+        second_last_frame, last_frame = frame_index_names[-2:]
+        if last_frame not in motion_mask_paths:
+            motion_mask_paths[sequence][last_frame] = (
+                motion_mask_paths[sequence][second_last_frame])
+
+    tasks = [(sequence, frame_name) for sequence in predictions.keys()
+             for frame_name in predictions[sequence]]
+    for sequence, frame_name in tasks:
+        frame_key = (sequence, frame_name)
         # If --save-pickle is true, process every frame. Otherwise, only
         # process frames that are in --fbms-annotations-json.
         if not args.save_pickle and frame_key not in frame_key_to_id:
             continue
 
-        boxes = predictions[frame_key]['boxes']
-        segmentations = predictions[frame_key]['segmentations']
+        boxes = predictions[sequence][frame_name]['boxes']
+        segmentations = predictions[sequence][frame_name]['segmentations']
 
-        frame_index = fbms_utils.get_framenumber(frame_name)
         motion_mask = np.array(
-            Image.open(motion_mask_paths[sequence][frame_index])) != 0
+            Image.open(motion_mask_paths[sequence][frame_name])) != 0
 
         if args.save_pickle:
             updated_boxes = []
