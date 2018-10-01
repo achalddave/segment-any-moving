@@ -83,6 +83,8 @@ class Detection():
             'center_box': None,
             'center_mask': None,
             'decoded_mask': None,
+            'mask_histogram': None,
+            'mask_histogram_edges': None
         }
 
     def contour_moments(self):
@@ -159,7 +161,7 @@ class Detection():
         #     recognition from abbey to zoo." Computer vision and pattern
         #     recognition (CVPR), 2010 IEEE conference on. IEEE, 2010.
         # https://www.cc.gatech.edu/~hays/papers/sun.pdf
-        if 'mask_histogram' in self._cached_values:
+        if self._cached_values['mask_histogram'] is not None:
             return (self._cached_values['mask_histogram'],
                     self._cached_values['mask_histogram_edges'])
         # (num_pixels, num_channels)
