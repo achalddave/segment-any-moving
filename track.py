@@ -26,22 +26,26 @@ from utils.log import setup_logging
 # Detection confidence threshold for starting a new track
 NEW_TRACK_THRESHOLD = 0.9
 # Detection confidence threshold for adding a detection to existing track.
-CONTINUE_TRACK_THRESHOLD = 0.5
+CONTINUE_TRACK_THRESHOLD = 0.7
 
 # How many frames a track is allowed to miss detections in.
-MAX_SKIP = 30
+MAX_SKIP = 10
 
 # Maximum distance between matched detections, as a fraction of the image
 # diagonal.
 SPATIAL_THRESHOLD = 0.2  # float('inf')  # 0.00000
 
+# Area ratio between matched detections must be between threshold and
+# 1/threshold.
 AREA_RATIO_THRESHOLD = 0.5
-IOU_GAP = 0.3
-MIN_IOU = 0
+IOU_GAP = 0.0
+
+# Minimum IoU between matched detections.
+MIN_IOU = 0.1  # 1.0
 APPEARANCE_FEATURE = 'histogram'  # one of 'mask' or 'histogram'
 assert APPEARANCE_FEATURE in ('mask', 'histogram')
 if APPEARANCE_FEATURE == 'mask':
-    APPEARANCE_GAP = 0.5
+    APPEARANCE_GAP = 0.0
 else:
     APPEARANCE_GAP = 0.0
 
