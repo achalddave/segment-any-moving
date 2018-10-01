@@ -234,24 +234,10 @@ def track_distance(track, detection):
     diagonal = (detection.image.shape[0]**2 + detection.image.shape[1]**2)**0.5
     return (diff_norm / diagonal)
 
-def match_detections(tracks, detections):
-    """
-    Args:
-        track (list): List of Track objects, containing tracks up to this
-            frame.
-        detections (list): List of Detection objects for the current frame.
 
-    Returns:
-        matched_tracks (list): List of Track objects or None, of length
-            len(detection), containing the Track, if any, that each Detection
-            is assigned to.
-    """
+def _match_detections_single_timestep(tracks, detections):
     matched_tracks = [None for _ in detections]
-    # Tracks sorted by most recent to oldest.
-    tracks = sorted(
-        tracks,
-        key=lambda t: (t.last_timestamp(), t.detections[-1].score),
-        reverse=True)
+
     sorted_indices = sorted(
         range(len(detections)),
         key=lambda index: detections[index].score,
@@ -326,6 +312,45 @@ def match_detections(tracks, detections):
         if (second_best_distance - best_distance) > APPEARANCE_GAP:
             matched_tracks[best_match] = track
             candidates[track.id] = []
+    return matched_tracks
+
+
+def match_detections(tracks, detections):
+    """
+    Args:
+        track (list): List of Track objects, containing tracks up to this
+            frame.
+        detections (list): List of Detection objects for the current frame.
+
+    Returns:
+        matched_tracks (list): List of Track objects or None, of length
+            len(detection), containing the Track, if any, that each Detection
+            is assigned to.
+    """
+    # Tracks sorted by most recent to oldest.
+    tracks_by_timestamp = collections.defaultdict(list)
+    for track in tracks:
+        tracks_by_timestamp[track.last_timestamp()].append(track)
+
+    timestamps = sorted(tracks_by_timestamp.keys(), reverse=True)
+    matched_tracks = [None for _ in detections]
+
+    # Match detections to the most recent tracks first.
+    unmatched_detection_indices = list(range(len(detections)))
+    for timestamp in timestamps:
+        single_timestamp_matched_tracks = _match_detections_single_timestep(
+            tracks_by_timestamp[timestamp],
+            [detections[i] for i in unmatched_detection_indices])
+        new_unmatched_indices = []
+        for i, track in enumerate(single_timestamp_matched_tracks):
+            detection_index = unmatched_detection_indices[i]
+            if track is not None:
+                assert matched_tracks[detection_index] is None
+                matched_tracks[detection_index] = track
+            else:
+                new_unmatched_indices.append(detection_index)
+        unmatched_detection_indices = new_unmatched_indices
+
     return matched_tracks
 
 
