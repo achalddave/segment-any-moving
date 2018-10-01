@@ -536,7 +536,8 @@ def main():
             Detection(box[:4], box[4], label, timestamp, image, mask,
                       feature) for box, mask, label, feature in zip(
                           boxes, masks, labels, mask_features)
-            if box[4] > CONTINUE_TRACK_THRESHOLD  #  and label == 1  # person
+            if box[4] > CONTINUE_TRACK_THRESHOLD
+            # and label_list[label] == 'person')
         ]
         matched_tracks = match_detections(current_tracks, detections)
 
