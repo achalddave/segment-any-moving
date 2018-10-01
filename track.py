@@ -495,7 +495,7 @@ def main():
             image_data['boxes'], image_data['segmentations'],
             image_data['keypoints'])
         mask_features = [None for _ in masks]
-        if 'features' in image_data:
+        if 'features' in image_data and APPEARANCE_FEATURE == 'mask':
             # features are of shape (num_segments, d)
             mask_features = list(image_data['features'])
 
