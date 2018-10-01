@@ -23,34 +23,6 @@ from utils.datasets import get_classes
 from utils.distance import chi_square_distance, intersection_distance
 from utils.log import setup_logging
 
-# Detection confidence threshold for starting a new track
-NEW_TRACK_THRESHOLD = 0.9
-# Detection confidence threshold for adding a detection to existing track.
-CONTINUE_TRACK_THRESHOLD = 0.7
-
-# How many frames a track is allowed to miss detections in.
-MAX_SKIP = 10
-
-# Maximum distance between matched detections, as a fraction of the image
-# diagonal.
-SPATIAL_THRESHOLD = 0.2  # float('inf')  # 0.00000
-
-# Area ratio between matched detections must be between threshold and
-# 1/threshold.
-AREA_RATIO_THRESHOLD = 0.5
-IOU_GAP = 0.0
-
-# Minimum IoU between matched detections.
-MIN_IOU = 0.1  # 1.0
-APPEARANCE_FEATURE = 'histogram'  # one of 'mask' or 'histogram'
-assert APPEARANCE_FEATURE in ('mask', 'histogram')
-if APPEARANCE_FEATURE == 'mask':
-    APPEARANCE_GAP = 0.0
-else:
-    APPEARANCE_GAP = 0.0
-
-# Whether to draw a diagnostic showing the spatial distance threshold
-DRAW_SPATIAL_THRESHOLD = False
 
 def decay_weighted_mean(values, sigma=5):
     """Weighted mean that focuses on most recent values.
@@ -239,7 +211,7 @@ def track_distance(track, detection):
     return (diff_norm / diagonal)
 
 
-def _match_detections_single_timestep(tracks, detections):
+def _match_detections_single_timestep(tracks, detections, tracking_params):
     matched_tracks = [None for _ in detections]
 
     sorted_indices = sorted(
@@ -259,8 +231,9 @@ def _match_detections_single_timestep(tracks, detections):
         for i in candidates[track.id]:
             d = detections[i]
             area = d.compute_area()
-            if (area > 0 and (area / track_area) > AREA_RATIO_THRESHOLD
-                    and (track_area / area) > AREA_RATIO_THRESHOLD):
+            if (area > 0
+                    and (area / track_area) > tracking_params['area_ratio']
+                    and (track_area / area) > tracking_params['area_ratio']):
                 new_candidates.append(i)
         candidates[track.id] = new_candidates
 
@@ -272,7 +245,7 @@ def _match_detections_single_timestep(tracks, detections):
             already_matched = matched_tracks[i] is not None
             different_label = track_detection.label != detections[i].label
             too_far = (track_distance(track, detections[i]) >
-                       SPATIAL_THRESHOLD)
+                       tracking_params['spatial_dist_max'])
             if already_matched or different_label or too_far:
                 continue
             track_ious[i] = track_detection.mask_iou(detections[i])
@@ -283,12 +256,13 @@ def _match_detections_single_timestep(tracks, detections):
             track_ious.items(), key=lambda x: x[1], reverse=True)
         best_index, best_iou = sorted_ious[0]
         second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
-        if (best_iou - second_best_iou) > IOU_GAP:
+        if (best_iou - second_best_iou) > tracking_params['iou_gap_min']:
             matched_tracks[best_index] = track
             candidates[track.id] = []
         else:
             candidates[track.id] = [
-                d for d, iou in sorted_ious if iou >= MIN_IOU
+                d for d, iou in sorted_ious
+                if iou >= tracking_params['iou_min']
             ]
 
     # Stage 3: Match tracks to detections with good appearance threshold.
@@ -301,10 +275,10 @@ def _match_detections_single_timestep(tracks, detections):
         appearance_distances = {}
         track_detection = track.detections[-1]
         for i in candidates[track.id]:
-            if APPEARANCE_FEATURE == 'mask':
+            if tracking_params['appearance_feature'] == 'mask':
                 appearance_distances[i] = cosine(track_detection.mask_feature,
                                                  detections[i].mask_feature)
-            elif APPEARANCE_FEATURE == 'histogram':
+            elif tracking_params['appearance_feature'] == 'histogram':
                 appearance_distances[i] = chi_square_distance(
                         track_detection.compute_histogram()[0],
                         detections[i].compute_histogram()[0])
@@ -313,13 +287,14 @@ def _match_detections_single_timestep(tracks, detections):
         best_match, best_distance = sorted_distances[0]
         second_best_distance = (sorted_distances[1][1] if
                                 len(sorted_distances) > 1 else np.float('inf'))
-        if (second_best_distance - best_distance) > APPEARANCE_GAP:
+        if ((second_best_distance - best_distance) >
+                tracking_params['appearance_gap']):
             matched_tracks[best_match] = track
             candidates[track.id] = []
     return matched_tracks
 
 
-def match_detections(tracks, detections):
+def match_detections(tracks, detections, tracking_params):
     """
     Args:
         track (list): List of Track objects, containing tracks up to this
@@ -344,7 +319,8 @@ def match_detections(tracks, detections):
     for timestamp in timestamps:
         single_timestamp_matched_tracks = _match_detections_single_timestep(
             tracks_by_timestamp[timestamp],
-            [detections[i] for i in unmatched_detection_indices])
+            [detections[i] for i in unmatched_detection_indices],
+            tracking_params)
         new_unmatched_indices = []
         for i, track in enumerate(single_timestamp_matched_tracks):
             detection_index = unmatched_detection_indices[i]
@@ -361,6 +337,7 @@ def match_detections(tracks, detections):
 def visualize_detections(image,
                          detections,
                          dataset,
+                         tracking_params,
                          box_alpha=0.7,
                          dpi=200):
     if not detections:
@@ -385,12 +362,12 @@ def visualize_detections(image,
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
         # Draw spatial distance threshold
-        if DRAW_SPATIAL_THRESHOLD:
+        if tracking_params['draw_spatial_threshold']:
             diagonal = (
                 detection.image.shape[0]**2 + detection.image.shape[1]**2)**0.5
             cv2.circle(
                 image, (int(cx), int(cy)),
-                radius=int(diagonal * SPATIAL_THRESHOLD),
+                radius=int(diagonal * tracking_params['spatial_dist_max']),
                 thickness=1,
                 color=color)
 
@@ -448,6 +425,65 @@ def main():
               '"sequence_frame": the frame number is separated by an '
                                  'underscore'
               '"fbms": assume fbms style frame numbers'))
+
+    param_parser = parser.add_argument_group('Tracking parameters')
+    param_parser.add_argument(
+        '--score-init-min',
+        default=0.9,
+        type=float,
+        help='Detection confidence threshold for starting a new track')
+    param_parser.add_argument(
+        '--score-continue-min',
+        default=0.7,
+        type=float,
+        help=('Detection confidence threshold for adding a detection to '
+              'existing track.'))
+    param_parser.add_argument(
+        '--frames-skip-max',
+        default=10,
+        type=int,
+        help='How many frames a track is allowed to miss detections in.')
+    param_parser.add_argument(
+        '--spatial-dist-max',
+        default=0.2,
+        type=float,
+        help=('Maximum distance between matched detections, as a fraction of '
+              'the image diagonal.'))
+    param_parser.add_argument(
+        '--area-ratio',
+        default=0.5,
+        type=float,
+        help=('Specifies threshold for area ratio between matched detections. '
+              'To match two detections, the ratio between their areas must '
+              'be between this threshold and 1/threshold. Setting this to '
+              '0 disables checking of area ratios.'))
+    param_parser.add_argument(
+        '--iou-min',
+        default=0.1,
+        type=float,
+        help='Minimum IoU between matched detections.')
+    param_parser.add_argument(
+        '--iou-gap-min',
+        default=0,
+        type=float,
+        help=('Minimum gap between the best IoU and the second best IoU of '
+              'detections to a track. For each track, if the detection with '
+              'highest IoU has IoU > IoU of second highest IoU detection + '
+              'gap, then the highest IoU detection is automatically assigned '
+              'to the track.'))
+    # TODO(achald): Add help text.
+    param_parser.add_argument(
+        '--appearance-feature',
+        choices=['mask', 'histogram'],
+        default='histogram')
+    # TODO(achald): Add help text.
+    param_parser.add_argument('--appearance-gap', default=0, type=float)
+
+    debug_parser = parser.add_argument_group('debug')
+    debug_parser.add_argument(
+        '--draw-spatial-threshold',
+        action='store_true',
+        help='Draw a diagnostic showing the spatial distance threshold')
 
     args = parser.parse_args()
     assert (args.output_dir is not None
@@ -515,6 +551,14 @@ def main():
     current_tracks = []
     track_id = 0
 
+    tracking_params = {
+        x: getattr(args, x)
+        for x in [
+            'score_init_min', 'score_continue_min', 'frames_skip_max',
+            'spatial_dist_max', 'area_ratio', 'iou_min', 'iou_gap_min',
+            'appearance_feature', 'appearance_gap', 'draw_spatial_threshold'
+        ]
+    }
     label_list = get_classes(args.dataset)
     for timestamp, image_name in enumerate(tqdm(frames)):
         for track in current_tracks:
@@ -528,7 +572,8 @@ def main():
             image_data['boxes'], image_data['segmentations'],
             image_data['keypoints'])
         mask_features = [None for _ in masks]
-        if 'features' in image_data and APPEARANCE_FEATURE == 'mask':
+        if ('features' in image_data
+                and tracking_params['appearance_feature'] == 'mask'):
             # features are of shape (num_segments, d)
             mask_features = list(image_data['features'])
 
@@ -536,15 +581,16 @@ def main():
             Detection(box[:4], box[4], label, timestamp, image, mask,
                       feature) for box, mask, label, feature in zip(
                           boxes, masks, labels, mask_features)
-            if box[4] > CONTINUE_TRACK_THRESHOLD
+            if box[4] > args.score_continue_min
             # and label_list[label] == 'person')
         ]
-        matched_tracks = match_detections(current_tracks, detections)
+        matched_tracks = match_detections(current_tracks, detections,
+                                          tracking_params)
 
         continued_tracks = []
         for detection, track in zip(detections, matched_tracks):
             if track is None:
-                if detection.score > NEW_TRACK_THRESHOLD:
+                if detection.score > args.score_init_min:
                     track = Track(track_id)
                     all_tracks.append(track)
                     track_id += 1
@@ -558,7 +604,7 @@ def main():
         skipped_tracks = []
         for track in current_tracks:
             if track.id not in continued_track_ids and (
-                    track.last_timestamp() - timestamp) < MAX_SKIP:
+                    track.last_timestamp() - timestamp) < args.frames_skip_max:
                 skipped_tracks.append(track)
 
         current_tracks = continued_tracks + skipped_tracks
@@ -622,7 +668,10 @@ def main():
                 os.path.join(args.images_dir, image_name + args.extension))
             image = image[:, :, ::-1]  # BGR -> RGB
             new_image = visualize_detections(
-                image, detections_by_frame[timestamp], dataset=args.dataset)
+                image,
+                detections_by_frame[timestamp],
+                dataset=args.dataset,
+                tracking_params=tracking_params)
 
             if args.output_video is not None:
                 images.append(new_image)
