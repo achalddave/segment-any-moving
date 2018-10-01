@@ -31,7 +31,10 @@ CONTINUE_TRACK_THRESHOLD = 0.5
 # How many frames a track is allowed to miss detections in.
 MAX_SKIP = 30
 
-SPATIAL_THRESHOLD = 0.00005
+# Maximum distance between matched detections, as a fraction of the image
+# diagonal.
+SPATIAL_THRESHOLD = 0.2  # float('inf')  # 0.00000
+
 AREA_RATIO_THRESHOLD = 0.5
 IOU_GAP = 0.3
 MIN_IOU = 0
@@ -42,6 +45,8 @@ if APPEARANCE_FEATURE == 'mask':
 else:
     APPEARANCE_GAP = 0.0
 
+# Whether to draw a diagnostic showing the spatial distance threshold
+DRAW_SPATIAL_THRESHOLD = False
 
 def decay_weighted_mean(values, sigma=5):
     """Weighted mean that focuses on most recent values.
@@ -220,9 +225,8 @@ def track_distance(track, detection):
     detection_cx, detection_cy = detection.compute_center_box()
     diff_norm = ((predicted_cx - detection_cx)**2 +
                  (predicted_cy - detection_cy)**2)**0.5
-    area = detection.image.shape[0] * detection.image.shape[1]
-    return (diff_norm / area)
-
+    diagonal = (detection.image.shape[0]**2 + detection.image.shape[1]**2)**0.5
+    return (diff_norm / diagonal)
 
 def match_detections(tracks, detections):
     """
@@ -344,12 +348,14 @@ def visualize_detections(image,
         # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
         # Draw spatial distance threshold
-        area = detection.image.shape[0] * detection.image.shape[1]
-        # cv2.circle(
-        #     image, (int(cx), int(cy)),
-        #     radius=int(area * SPATIAL_THRESHOLD),
-        #     thickness=1,
-        #     color=color)
+        if DRAW_SPATIAL_THRESHOLD:
+            diagonal = (
+                detection.image.shape[0]**2 + detection.image.shape[1]**2)**0.5
+            cv2.circle(
+                image, (int(cx), int(cy)),
+                radius=int(diagonal * SPATIAL_THRESHOLD),
+                thickness=1,
+                color=color)
 
         # if detection.track.velocity is not None:
         #     vx, vy = detection.track.velocity
