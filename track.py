@@ -87,6 +87,10 @@ class Detection():
             'mask_histogram_edges': None
         }
 
+    def clear_cache(self):
+        for key in self._cached_values:
+            self._cached_values[key] = None
+
     def contour_moments(self):
         if self._cached_values['contour_moments'] is None:
             self._cached_values['contour_moments'] = cv2.moments(
@@ -480,6 +484,9 @@ def main():
 
     label_list = get_classes(args.dataset)
     for timestamp, image_name in enumerate(tqdm(frames)):
+        for track in current_tracks:
+            for detection in track.detections:
+                detection.clear_cache()
         image = cv2.imread(
             os.path.join(args.images_dir, image_name + args.extension))
         image = image[:, :, ::-1]  # BGR -> RGB
