@@ -295,6 +295,7 @@ def match_detections(tracks, detections):
         second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
         if (best_iou - second_best_iou) > IOU_GAP:
             matched_tracks[best_index] = track
+            candidates[track.id] = []
         else:
             candidates[track.id] = [
                 d for d, iou in sorted_ious if iou >= MIN_IOU
@@ -324,6 +325,7 @@ def match_detections(tracks, detections):
                                 len(sorted_distances) > 1 else np.float('inf'))
         if (second_best_distance - best_distance) > APPEARANCE_GAP:
             matched_tracks[best_match] = track
+            candidates[track.id] = []
     return matched_tracks
 
 
