@@ -431,7 +431,9 @@ def main():
     parser.add_argument('--output-dir')
     parser.add_argument('--output-video')
     parser.add_argument('--output-video-fps', default=10, type=float)
-    parser.add_argument('--output-track-file')
+    parser.add_argument(
+        '--output-track-file',
+        help='Optional; path to output MOT17 style tracking output.')
     parser.add_argument('--extension', default='.png')
     parser.add_argument('--dataset', default='coco', choices=['coco'])
     parser.add_argument(
