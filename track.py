@@ -571,11 +571,17 @@ def main():
         boxes, masks, _, labels = vis.convert_from_cls_format(
             image_data['boxes'], image_data['segmentations'],
             image_data['keypoints'])
-        mask_features = [None for _ in masks]
+
+        if boxes is None:
+            logging.info('No predictions for image %s', image_name)
+            boxes, masks = [], []
+
         if ('features' in image_data
                 and tracking_params['appearance_feature'] == 'mask'):
             # features are of shape (num_segments, d)
             mask_features = list(image_data['features'])
+        else:
+            mask_features = [None for _ in masks]
 
         detections = [
             Detection(box[:4], box[4], label, timestamp, image, mask,
