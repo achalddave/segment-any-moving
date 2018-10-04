@@ -17,8 +17,9 @@ from utils.fbms.utils import FbmsGroundtruth, get_tracks_text, masks_to_tracks
 def process_sequences(fbms_dir,
                       detectron_dir,
                       output_dir,
-                      save_images=False,
-                      detectron_threshold=0.7):
+                      save_images,
+                      detectron_threshold,
+                      iou_threshold):
     assert fbms_dir.exists()
     assert detectron_dir.exists()
 
@@ -87,9 +88,17 @@ def process_sequences(fbms_dir,
                 [mask_util.encode(np.asfortranarray(g.astype('uint8')))
                  for g in groundtruth_masks],
                 pyiscrowd=np.zeros(len(groundtruth_masks)))
+
             assert isinstance(mask_iou, np.ndarray), (
                 'Unknown type of mask_iou (%s) for sequence %s, frame %s' %
                 (type(mask_iou), sequence, frame_number))
+
+            filtered_prediction_indices = np.where(
+                np.any(mask_iou >= iou_threshold, axis=1))[0]
+            mask_iou = mask_iou[filtered_prediction_indices]
+            filtered_predictions = [
+                predicted_masks[x] for x in filtered_prediction_indices
+            ]
             mask_distance = 1 - mask_iou
 
             # Array of length num_matches, containing tuples of
@@ -103,7 +112,7 @@ def process_sequences(fbms_dir,
                 plt.suptitle('Frame %s' % frame_number)
 
             for predicted_mask_index, groundtruth_id in assignments:
-                predicted_mask = predicted_masks[predicted_mask_index]
+                predicted_mask = filtered_predictions[predicted_mask_index]
                 final_mask[predicted_mask != 0] = groundtruth_id + 1
                 if False:
                     ax[groundtruth_id, 0].imshow(groundtruth_masks[groundtruth_id])
@@ -186,6 +195,7 @@ def main():
         '--save-images', action='store_true')
     parser.add_argument(
         '--detectron-threshold', type=float, default=0.7)
+    parser.add_argument('--iou-threshold', type=float, default=0.0)
     args = parser.parse_args()
 
     output = pathlib.Path(args.output_dir)
@@ -209,14 +219,16 @@ def main():
                           detectron_root / 'TrainingSet',
                           output / 'TrainingSet',
                           args.save_images,
-                          args.detectron_threshold)
+                          args.detectron_threshold,
+                          args.iou_threshold)
 
     if use_test:
         process_sequences(fbms_root / 'TestSet',
                           detectron_root / 'TestSet',
                           output / 'TestSet',
                           args.save_images,
-                          args.detectron_threshold)
+                          args.detectron_threshold,
+                          args.iou_threshold)
 
 
 if __name__ == "__main__":
