@@ -12,7 +12,8 @@ from scipy.misc import imsave
 
 import utils.vis as vis
 from utils.colors import colormap
-from utils.fbms.utils import FbmsGroundtruth, get_tracks_text, masks_to_tracks
+from utils.fbms.utils import (FbmsGroundtruth, get_tracks_text,
+                              masks_to_tracks, get_framenumber)
 from utils.log import setup_logging
 
 
@@ -39,7 +40,7 @@ def process_sequences(fbms_dir,
         frame_number_to_labels = groundtruth.frame_labels()
         detectron_paths = (detectron_dir / sequence).glob('*.pickle')
         detectron_paths = sorted(
-            detectron_paths, key=lambda x: int(x.stem.split('_')[1]))
+            detectron_paths, key=lambda x: get_framenumber(x.stem))
 
         final_masks = {}
         for frame_number, frame_labels in frame_number_to_labels.items():
