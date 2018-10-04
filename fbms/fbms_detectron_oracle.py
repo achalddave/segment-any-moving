@@ -223,16 +223,30 @@ def main():
     use_test = args.set in ('test', 'all')
 
     if use_train:
+        train_detectron = detectron_root / 'TrainingSet'
+        # If we only want to evaluate on train, and the "TrainingSet" directory
+        # doesn't exist, then treat the root directory as the training
+        # directory.
+        if (not use_test and not train_detectron.exists()
+                and detectron_root.exists()):
+            train_detectron = detectron_root
         process_sequences(fbms_root / 'TrainingSet',
-                          detectron_root / 'TrainingSet',
+                          train_detectron,
                           output / 'TrainingSet',
                           args.save_images,
                           args.detectron_threshold,
                           args.iou_threshold)
 
     if use_test:
+        test_detectron = detectron_root / 'TestSet'
+        # If we only want to evaluate on train, and the "TestSet" directory
+        # doesn't exist, then treat the root directory as the test
+        # directory.
+        if (not use_train and not test_detectron.exists()
+                and detectron_root.exists()):
+            test_detectron = detectron_root
         process_sequences(fbms_root / 'TestSet',
-                          detectron_root / 'TestSet',
+                          test_detectron,
                           output / 'TestSet',
                           args.save_images,
                           args.detectron_threshold,
