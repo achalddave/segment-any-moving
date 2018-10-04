@@ -59,6 +59,11 @@ def process_sequences(fbms_dir,
                 vis.convert_from_cls_format(data['boxes'],
                                             data['segmentations'],
                                             data['keypoints']))
+            if predicted_boxes is None:
+                final_masks[frame_number] = np.zeros(
+                    groundtruth_masks[0].shape, dtype=np.uint8)
+                continue
+
             scores = predicted_boxes[:, -1]
             if np.all(scores <= detectron_threshold):
                 logging.info('No masks above threshold (%s) Using most '
