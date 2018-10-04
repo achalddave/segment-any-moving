@@ -54,25 +54,26 @@ def process_sequences(fbms_dir,
                 '%s does not exist.' % detectron_path)
             with open(detectron_path, 'rb') as f:
                 data = pickle.load(f)
-                predicted_boxes, predicted_masks, _, _ = (
-                    vis.convert_from_cls_format(data['boxes'],
-                                                data['segmentations'],
-                                                data['keypoints']))
-                scores = predicted_boxes[:, -1]
-                if np.all(scores <= detectron_threshold):
-                    logging.info('No masks above threshold (%s) Using most '
-                                 'confident mask only.' % detectron_threshold)
-                    predicted_masks = [predicted_masks[np.argmax(scores)]]
-                else:
-                    predicted_masks = [
-                        m for i, m in enumerate(predicted_masks)
-                        if scores[i] > 0.5
-                    ]
-                predicted_masks = mask_util.decode(predicted_masks)
+
+            predicted_boxes, predicted_masks, _, _ = (
+                vis.convert_from_cls_format(data['boxes'],
+                                            data['segmentations'],
+                                            data['keypoints']))
+            scores = predicted_boxes[:, -1]
+            if np.all(scores <= detectron_threshold):
+                logging.info('No masks above threshold (%s) Using most '
+                             'confident mask only.' % detectron_threshold)
+                predicted_masks = [predicted_masks[np.argmax(scores)]]
+            else:
                 predicted_masks = [
-                    predicted_masks[:, :, i]
-                    for i in range(predicted_masks.shape[2])
+                    m for i, m in enumerate(predicted_masks)
+                    if scores[i] > 0.5
                 ]
+            predicted_masks = mask_util.decode(predicted_masks)
+            predicted_masks = [
+                predicted_masks[:, :, i]
+                for i in range(predicted_masks.shape[2])
+            ]
 
             mask_distance = np.zeros(
                 (len(groundtruth_masks), len(predicted_masks)))
