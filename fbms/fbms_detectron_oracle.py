@@ -2,6 +2,7 @@ import argparse
 import logging
 import pathlib
 import pickle
+from pathlib import Path
 
 import pycocotools.mask as mask_util
 import numpy as np
@@ -12,6 +13,7 @@ from scipy.misc import imsave
 import utils.vis as vis
 from utils.colors import colormap
 from utils.fbms.utils import FbmsGroundtruth, get_tracks_text, masks_to_tracks
+from utils.log import setup_logging
 
 
 def process_sequences(fbms_dir,
@@ -201,9 +203,14 @@ def main():
     output = pathlib.Path(args.output_dir)
     output.mkdir(exist_ok=True)
 
-    logging.getLogger().setLevel(logging.INFO)
-    logging.basicConfig(
-        format='%(asctime)s.%(msecs).03d: %(message)s', datefmt='%H:%M:%S')
+    with open(__file__, 'r') as f:
+        _source = f.read()
+
+    logging_path = str(output / (Path(__file__).name + '.log'))
+    setup_logging(str(logging_path))
+    logging.info('Args: %s\n' % vars(args))
+
+    file_logger = logging.getLogger(logging_path)
 
     fbms_root = pathlib.Path(args.fbms_root)
     assert fbms_root.exists()
@@ -229,6 +236,10 @@ def main():
                           args.save_images,
                           args.detectron_threshold,
                           args.iou_threshold)
+
+    file_logger.info('Source:')
+    file_logger.info('=======')
+    file_logger.info(_source)
 
 
 if __name__ == "__main__":
