@@ -72,7 +72,7 @@ def process_sequences(fbms_dir,
             else:
                 predicted_masks = [
                     m for i, m in enumerate(predicted_masks)
-                    if scores[i] > 0.5
+                    if scores[i] > detectron_threshold
                 ]
             predicted_masks = mask_util.decode(predicted_masks)
             predicted_masks = [
