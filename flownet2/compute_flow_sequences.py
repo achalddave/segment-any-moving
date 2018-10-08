@@ -99,7 +99,7 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                 subprocess.check_output(command, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 logging.fatal('Failed command.\nException: %s\nOutput %s',
-                              e.returncode, e.output)
+                              e.returncode, e.output.decode('utf-8'))
                 raise
     else:
         times['gpu_wait_start'] = times['gpu_wait_end'] = 0
