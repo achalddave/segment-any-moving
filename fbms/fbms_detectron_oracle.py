@@ -53,9 +53,17 @@ def process_sequences(fbms_dir,
                     continue  # Ignore background
                 groundtruth_masks.append(frame_labels == region_id)
 
+            # Last frame may not have predictions, use second to last frame.
+            if frame_number == len(detectron_paths):
+                logging.info(
+                    ("No predictions found for frame %s in sequence %s, "
+                     "using previous frame (%s) instead.") %
+                    (frame_number, sequence, frame_number - 1))
+                frame_number -= 1
             detectron_path = detectron_paths[frame_number]
             assert detectron_path.exists(), (
                 '%s does not exist.' % detectron_path)
+
             with open(detectron_path, 'rb') as f:
                 data = pickle.load(f)
 
