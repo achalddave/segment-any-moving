@@ -402,6 +402,46 @@ def visualize_detections(image,
     return image
 
 
+def output_fbms_tracks(tracks, groundtruth_dir, output_file):
+    from utils.fbms import utils as fbms_utils
+
+    logging.info('Outputting FBMS style tracks')
+
+    # Map frame number to list of Detections
+    detections_by_frame = collections.defaultdict(list)
+    for track in tracks:
+        for detection in track.detections:
+            detections_by_frame[detection.timestamp].append(detection)
+    # Disable defaultdict functionality so missing keys raise errors.
+    detections_by_frame.default_factory = None
+    assert len(detections_by_frame) > 0
+
+    visualize = True
+    groundtruth = fbms_utils.FbmsGroundtruth(Path(groundtruth_dir))
+    segmentations = {}
+    image_size = tracks[0].detections[0].image.shape[:2]
+    for frame_offset, frame_path in groundtruth.frame_label_paths.items():
+        segmentation = np.zeros(image_size)
+        if frame_offset not in detections_by_frame:
+            segmentations[frame_offset] = segmentation
+            continue
+        # Sort by ascending score; this is the order we will paint
+        # segmentations in.
+        detections = sorted(
+            detections_by_frame[frame_offset], key=lambda x: x.score)
+        for i, detection in enumerate(detections):
+            mask = detection.decoded_mask()
+            label = detection.track.id + 1
+            segmentation[mask == 1] = label
+        segmentations[frame_offset] = segmentation
+
+    fbms_tracks = fbms_utils.masks_to_tracks(segmentations)
+    fbms_tracks_str = fbms_utils.get_tracks_text(fbms_tracks,
+                                                 groundtruth.num_frames)
+    with open(output_file, 'w') as f:
+        f.write(fbms_tracks_str)
+
+
 def main():
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
@@ -425,6 +465,12 @@ def main():
               '"sequence_frame": the frame number is separated by an '
                                  'underscore'
               '"fbms": assume fbms style frame numbers'))
+    parser.add_argument('--output-fbms-file')
+    parser.add_argument(
+        '--fbms-groundtruth',
+        help=('Required if --output-fbms-file is specified. Should contain a '
+              'single.dat file of FBMS groundtruth. E.g. '
+              '{FBMS_ROOT}/TestSet/tennis/GroundTruth/'))
 
     param_parser = parser.add_argument_group('Tracking parameters')
     param_parser.add_argument(
@@ -505,7 +551,7 @@ def main():
     with open(__file__, 'r') as f:
         logging.debug(f.read())
 
-    logging.info('Args: %s', pprint.pformat(args))
+    logging.info('Args: %s', pprint.pformat(vars(args)))
 
     detectron_input = Path(args.detectron_dir)
     if not detectron_input.is_dir():
@@ -544,9 +590,15 @@ def main():
 
     should_visualize = (args.output_dir is not None
                         or args.output_video is not None)
-    should_output_tracks = args.output_track_file is not None
-    if should_output_tracks:
-        logging.info('Outputing tracks to %s', args.output_track_file)
+    should_output_mot = args.output_track_file is not None
+    if should_output_mot:
+        logging.info('Outputing MOT style tracks to %s',
+                     args.output_track_file)
+    should_output_fbms = args.output_fbms_file is not None
+    if should_output_fbms:
+        assert args.fbms_groundtruth is not None
+        logging.info('Outputting FBMS style tracks to %s',
+                     args.output_fbms_file)
     all_tracks = []
     current_tracks = []
     track_id = 0
@@ -564,9 +616,11 @@ def main():
         for track in current_tracks:
             for detection in track.detections:
                 detection.clear_cache()
+
         image = cv2.imread(
             os.path.join(args.images_dir, image_name + args.extension))
         image = image[:, :, ::-1]  # BGR -> RGB
+
         image_data = data[image_name]
         boxes, masks, _, labels = vis.convert_from_cls_format(
             image_data['boxes'], image_data['segmentations'],
@@ -615,9 +669,8 @@ def main():
 
         current_tracks = continued_tracks + skipped_tracks
 
-    if should_output_tracks:
-        logging.info('Outputting tracks')
-        # Map frame number to list of Detections
+    if should_output_mot:
+        logging.info('Outputting MOT style tracks')
         filtered_tracks = []
         for track in all_tracks:
             is_person = label_list[track.detections[-1].label] == 'person'
@@ -626,6 +679,7 @@ def main():
             if is_person and is_long_enough and has_high_score:
                 filtered_tracks.append(track)
 
+        # Map frame number to list of Detections
         detections_by_frame = collections.defaultdict(list)
         for track in filtered_tracks:
             for detection in track.detections:
@@ -658,6 +712,11 @@ def main():
         with open(args.output_track_file, 'w') as f:
             f.write(output_str)
         logging.info('Output tracks to %s' % args.output_track_file)
+
+    if should_output_fbms:
+        output_fbms_tracks(all_tracks, args.fbms_groundtruth,
+                           args.output_fbms_file)
+        logging.info('Output FBMS tracks to %s' % args.output_fbms_file)
 
     if should_visualize:
         logging.info('Visualizing tracks')
