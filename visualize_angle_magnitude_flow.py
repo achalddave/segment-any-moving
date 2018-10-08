@@ -93,7 +93,7 @@ def main():
             for dir_flow_paths in tqdm(flows_by_parent_dir.values()):
                 flows = parallel(
                     delayed(load_flow_png)(str(path))
-                    for path in tqdm(dir_flow_paths))
+                    for path in dir_flow_paths)
                 diagonal = (flows[0].shape[0]**2 + flows[0].shape[1]**2)**0.5
                 for flow in flows:
                     flow[:, :, 1] = flow[:, :, 1].clip(max=diagonal)
@@ -105,7 +105,7 @@ def main():
                 parallel(
                     delayed(visualize_flow)(flow, output_path,
                                             maximum_magnitude)
-                    for flow, output_path in tqdm(tasks))
+                    for flow, output_path in tasks)
 
 
 if __name__ == "__main__":
