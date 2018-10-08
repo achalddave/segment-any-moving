@@ -2,6 +2,7 @@ import argparse
 import pathlib
 import pickle
 import yaml
+from pathlib import Path
 
 import numpy as np
 import pycocotools.mask as mask_util
@@ -60,7 +61,7 @@ def main():
     with open(db_info_path, 'r') as f:
         davis_info = yaml.load(f)
 
-    palette_path = davis_eval_root / 'data' / 'palette.txt'
+    palette_path = Path(__file__).parent / 'palette.txt'
     assert palette_path.exists(), (
         'DAVIS palette file (%s) does not exist' % palette_path)
     palette = np.loadtxt(palette_path, dtype=np.uint8).reshape(-1, 3)
