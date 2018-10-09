@@ -15,7 +15,7 @@ from natsort import natsorted
 from PIL import Image
 from tqdm import tqdm
 
-from liteflownet.convert_flo_png import convert_flo
+from flow.convert_flo_png import convert_flo
 from utils.log import setup_logging
 
 
