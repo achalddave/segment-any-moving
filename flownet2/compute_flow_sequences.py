@@ -1,4 +1,4 @@
-"""Compute LiteFlowNet flow on videos."""
+"""Compute Flownet2 flow on videos."""
 
 import argparse
 import contextlib
@@ -204,8 +204,8 @@ def main():
                 'FlowNet2-Sintel/FlowNet2-CSS-Sintel_deploy.prototxt.template'
         },
         'flyingthings': {
-            'weights': 'FlowNet2-Sintel/FlowNet2_weights.caffemodel.h5',
-            'prototxt': 'FlowNet2-Sintel/FlowNet2_deploy.prototxt.template'
+            'weights': 'FlowNet2/FlowNet2_weights.caffemodel.h5',
+            'prototxt': 'FlowNet2/FlowNet2_deploy.prototxt.template'
         }
     }
 
