@@ -26,6 +26,48 @@ def gpu_from_queue(gpu_queue):
     gpu_queue.put(gpu)
 
 
+def compute_flownet_flow(flo_input_outputs,
+                         flownet_root,
+                         caffe_model,
+                         prototxt,
+                         gpu,
+                         logger=None,
+                         tmp_prefix=''):
+    os.environ['CAFFE_PATH'] = str(flownet_root)
+    os.environ['PYTHONPATH'] = '%s:%s' % (flownet_root / 'python',
+                                          os.environ['PYTHONPATH'])
+    os.environ['LD_LIBRARY_PATH'] = '%s:%s' % (flownet_root / 'build' / 'lib',
+                                               os.environ['LD_LIBRARY_PATH'])
+
+    # Final command:
+    # run-flownet-many.py /path/to/$net/$net_weights.caffemodel[.h5] \
+    #                     /path/to/$net/$net_deploy.prototxt.template \
+    #                      list.txt
+    #
+    # (where list.txt contains lines of the form "x.png y.png z.flo")
+    with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f:
+        for frame1, frame2, output_flo in flo_input_outputs:
+            input_list_f.write('%s %s %s\n' % (frame1, frame2, output_flo))
+        input_list_f.flush()
+
+        command = [
+            'python',
+            str(flownet_root / 'scripts' / 'run-flownet-many.py'),
+            str(caffe_model), str(prototxt), input_list_f.name,
+            '--gpu', str(gpu)
+        ]
+
+        if logger:
+            logger.info('Executing %s' % ' '.join(command))
+
+        try:
+            subprocess.check_output(command, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            logging.fatal('Failed command.\nException: %s\nOutput %s',
+                          e.returncode, e.output.decode('utf-8'))
+            raise
+
+
 def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                           flownet_root, tmp_prefix, gpu_queue, logger_name,
                           convert_png):
@@ -43,13 +85,6 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
                 (image_paths[0], dimensions, image_path, image.shape))
 
     output_dir.mkdir(exist_ok=True, parents=True)
-
-    # Final command:
-    # run-flownet-many.py /path/to/$net/$net_weights.caffemodel[.h5] \
-    #                     /path/to/$net/$net_deploy.prototxt.template \
-    #                      list.txt
-    #
-    # (where list.txt contains lines of the form "x.png y.png z.flo")
 
     # List of tuples: (frame1_path, frame2_path, output_flo)
     flo_input_outputs = []
@@ -72,35 +107,18 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
         if not flo.exists():
             flo_input_outputs.append((frame1, frame2, flo))
 
-    os.environ['CAFFE_PATH'] = str(flownet_root)
-    os.environ['PYTHONPATH'] = '%s:%s' % (flownet_root / 'python',
-                                          os.environ['PYTHONPATH'])
-    os.environ['LD_LIBRARY_PATH'] = '%s:%s' % (flownet_root / 'build' / 'lib',
-                                               os.environ['LD_LIBRARY_PATH'])
-
     if flo_input_outputs:
         times['gpu_wait_start'] = time.time()
-        with NamedTemporaryFile('w', prefix=tmp_prefix) as input_list_f, \
-                gpu_from_queue(gpu_queue) as gpu:
+        with gpu_from_queue(gpu_queue) as gpu:
             times['gpu_wait_end'] = time.time()
-            for frame1, frame2, output_flo in flo_input_outputs:
-                input_list_f.write('%s %s %s\n' % (frame1, frame2, output_flo))
-            input_list_f.flush()
-
-            command = [
-                'python',
-                str(flownet_root / 'scripts' / 'run-flownet-many.py'),
-                str(caffe_model), str(prototxt), input_list_f.name,
-                '--gpu', str(gpu)
-            ]
-
-            file_logger.info('Executing %s' % ' '.join(command))
-            try:
-                subprocess.check_output(command, stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as e:
-                logging.fatal('Failed command.\nException: %s\nOutput %s',
-                              e.returncode, e.output.decode('utf-8'))
-                raise
+            compute_flownet_flow(
+                flo_input_outputs,
+                flownet_root,
+                caffe_model,
+                prototxt,
+                gpu,
+                file_logger,
+                tmp_prefix=tmp_prefix)
     else:
         times['gpu_wait_start'] = times['gpu_wait_end'] = 0
 
