@@ -1,11 +1,10 @@
 """Compute flow on videos."""
 
-import click
+import argparse
 import contextlib
 import logging
 import os
 import subprocess
-import sys
 import time
 from datetime import datetime
 from math import ceil
@@ -19,99 +18,6 @@ from tqdm import tqdm
 
 from flow.convert_flo_png import convert_flo
 from utils.log import setup_logging
-
-
-generic_options = [
-    click.option(
-        '--input-dir',
-        required=True,
-        help='Directory containing a subdir for every sequence.'),
-    click.option('--output-dir', required=True),
-    click.option(
-        '--flow-type',
-        type=click.Choice(['flownet2', 'liteflownet']),
-        required=True),
-    click.option(
-        '--recursive/--no-recursive',
-        default=False,
-        help="""Search recursively in input-dir for sequences. Any directory
-                containing a file with extension specified by --extension is
-                treated as a sequence directory. NOTE: Does not support
-                symlinked directories."""),
-    click.option('--extension', default='.png'),
-    click.option(
-        '--convert-to-angle-magnitude-png/--no-convert-to-angle-magnitude-png',
-        help=('Convert flo files to angle/magnitude PNGs, and do not keep '
-              '.flo files around.'),
-        default=False),
-    click.option('--gpus', default='0,1,2,3', type=int),
-    click.option(
-        '--num-workers',
-        default=-1,
-        type=int,
-        help=('Number of workers. By default, set to the number of GPUs. '
-              'Having more workers than GPUs allows some workers to process '
-              'CPU operations, like loading input/output lists, checking '
-              'image dimensions, and converting .flo to .png while other '
-              'workers use the GPU.'))
-]
-
-
-def add_options(options):
-    """Add a list of options to a command.
-
-    From: https://stackoverflow.com/a/40195800/1291812"""
-    def _add_options(func):
-        for option in reversed(options):
-            func = option(func)
-        return func
-    return _add_options
-
-
-@click.group(context_settings={'max_content_width': 200})
-def cli():
-    """Compute flow on videos."""
-    pass
-
-
-@cli.command()
-@add_options(generic_options)
-@click.option(
-    '--repo-path', required=True, help='Path to liteflownet repo')
-@click.option(
-    '--model',
-    default='liteflownet-ft-kitti',
-    help=('Model to use for evaluation. chairs-things maps to the '
-          '`liteflownet` model, `sintel` maps to `liteflownet-ft-sintel` '
-          'and `kitti` maps to `liteflownet-ft-kitti`.'),
-    type=click.Choice(['chairs-things', 'sintel', 'kitti']))
-def liteflownet(repo_path, model, **kwargs):
-    flow_fn = compute_liteflownet_flow
-    flow_args = {
-        'repo_root': repo_path,
-        'cnn_model': model,
-        'tmp_prefix': Path(__file__).stem
-    }
-    compute_flow_parallel(flow_fn=flow_fn, flow_args=flow_args, **kwargs)
-
-
-@cli.command()
-@add_options(generic_options)
-@click.option('--repo-path', required=True, help='Path to flownet2 repo')
-@click.option(
-    '--model',
-    default='kitti',
-    type=click.Choice(['kitti', 'sintel', 'chairs-things']))
-def flownet2(repo_path, model, **kwargs):
-    flow_fn = compute_flownet2_flow
-    flow_args = {
-        'repo_root': repo_path,
-        'cnn_model': model,
-        'tmp_prefix': Path(__file__).stem
-    }
-    kwargs['flow_fn'] = flow_fn
-    kwargs['flow_args'] = flow_args
-    compute_flow_parallel(flow_fn=flow_fn, flow_args=flow_args, **kwargs)
 
 
 @contextlib.contextmanager
@@ -352,15 +258,68 @@ def compute_sequence_flow(image_paths, output_dir, flow_fn, flow_args,
             'Processed %s. Time taken: %s' % (output_dir, time_taken))
 
 
-def compute_sequence_flow_gpu_unpack(kwargs):
+def compute_sequence_flow_gpu_helper(kwargs):
     return compute_sequence_flow(**kwargs)
 
 
-def compute_flow_parallel(input_dir, output_dir, flow_fn, flow_args, recursive,
-                          extension, convert_to_angle_magnitude_png, gpus,
-                          num_workers):
-    input_root = Path(input_dir)
-    output_root = Path(output_dir)
+def main():
+    # Use first line of file docstring as description if it exists.
+    parser = argparse.ArgumentParser(
+        description=__doc__.split('\n')[0] if __doc__ else '',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '--input-dir',
+        required=True,
+        help='Directory containing a subdir for every sequence.')
+    parser.add_argument('--output-dir', required=True)
+    parser.add_argument(
+        '--flow-type', choices=['flownet2', 'liteflownet'], required=True)
+    parser.add_argument(
+        '--recursive',
+        action='store_true',
+        help="""Search recursively in input-dir for sequences. Any directory
+                containing a file with extension specified by --extension is
+                treated as a sequence directory. NOTE: Does not support
+                symlinked directories.""")
+    parser.add_argument('--extension', default='.png')
+    parser.add_argument(
+        '--convert-to-angle-magnitude-png',
+        help=('Convert flo files to angle/magnitude PNGs, and do not keep '
+              '.flo files around.'),
+        action='store_true')
+    parser.add_argument('--gpus', default=[0, 1, 2, 3], nargs='*', type=int)
+    parser.add_argument(
+        '--num-workers',
+        default=-1,
+        type=int,
+        help=('Number of workers. By default, set to the number of GPUs. '
+              'Having more workers than GPUs allows some workers to process '
+              'CPU operations, like loading input/output lists, checking '
+              'image dimensions, and converting .flo to .png while other '
+              'workers use the GPU.'))
+
+    flownet2_parser = parser.add_argument_group('Flownet2 params')
+    flownet2_parser.add_argument(
+        '--flownet2-dir', help='Path to flownet2 repo.')
+    flownet2_parser.add_argument(
+        '--flownet2-model',
+        default='kitti',
+        choices=['kitti', 'sintel', 'chairs-things'])
+
+    liteflownet_parser = parser.add_argument_group('Liteflownet Params')
+    liteflownet_parser.add_argument(
+        '--liteflownet-dir', help='Path to liteflownet repo')
+    liteflownet_parser.add_argument(
+        '--liteflownet-model',
+        default='liteflownet-ft-kitti',
+        help=('Model to use for evaluation. chairs-things maps to the '
+              '`liteflownet` model, `sintel` maps to `liteflownet-ft-sintel` '
+              'and `kitti` maps to `liteflownet-ft-kitti`.'),
+        choices=['chairs-things', 'sintel', 'kitti'])
+    args = parser.parse_args()
+
+    input_root = Path(args.input_dir)
+    output_root = Path(args.output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
 
     file_name = Path(__file__).stem
@@ -368,32 +327,51 @@ def compute_flow_parallel(input_dir, output_dir, flow_fn, flow_args, recursive,
         output_root /
         (file_name + '.py.%s.log' % datetime.now().strftime('%b%d-%H-%M-%S')))
     setup_logging(logging_path)
-    logging.info('Args:\n%s', sys.argv)
-    gpus = [int(x) for x in gpus.split(',')]
+    logging.info('Args:\n%s', vars(args))
 
-    if extension[0] != '.':
-        extension = '.' + extension
+    if args.extension[0] != '.':
+        args.extension = '.' + args.extension
 
-    if recursive:
+    if args.recursive:
         sequences = sorted(
-            set(x.parent for x in input_root.rglob('*' + extension)))
+            set(x.parent for x in input_root.rglob('*' + args.extension)))
     else:
         sequences = sorted(input_root.iterdir())
 
     import multiprocessing as mp
     manager = mp.Manager()
     gpu_queue = manager.Queue()
-    if num_workers == -1:
-        num_workers = len(gpus)
-    pool = mp.Pool(num_workers)
-    for gpu in gpus:
+    if args.num_workers == -1:
+        args.num_workers = len(args.gpus)
+    pool = mp.Pool(args.num_workers)
+    for gpu in args.gpus:
         gpu_queue.put(gpu)
 
+    if args.flow_type == 'flownet2':
+        flownet2_root = Path(args.flownet2_dir)
+        assert args.flownet2_model is not None
+        assert flownet2_root.exists()
+        flow_fn = compute_flownet2_flow
+        flow_args = {
+            'flownet_root': flownet2_root,
+            'cnn_model': args.flownet2_model,
+            'tmp_prefix': file_name
+        }
+    else:
+        liteflownet_root = Path(args.liteflownet_dir)
+        assert args.liteflownet_model is not None
+        assert liteflownet_root.exists()
+        flow_fn = compute_liteflownet_flow
+        flow_args = {
+            'liteflownet_root': liteflownet_root,
+            'cnn_model': args.liteflownet_model,
+            'tmp_prefix': file_name
+        }
     tasks = []
     for sequence_path in sequences:
         output_dir = output_root / (sequence_path.relative_to(input_root))
         image_paths = natsorted(
-            list(sequence_path.glob('*' + extension)),
+            list(sequence_path.glob('*' + args.extension)),
             key=lambda x: x.stem)
         tasks.append({
             'image_paths': image_paths,
@@ -402,14 +380,14 @@ def compute_flow_parallel(input_dir, output_dir, flow_fn, flow_args, recursive,
             'flow_args': flow_args,
             'gpu_queue': gpu_queue,
             'logger_name': logging_path,
-            'convert_png': convert_to_angle_magnitude_png,
+            'convert_png': args.convert_to_angle_magnitude_png,
         })
 
     list(
         tqdm(
-            pool.imap_unordered(compute_sequence_flow_gpu_unpack, tasks),
+            pool.imap_unordered(compute_sequence_flow_gpu_helper, tasks),
             total=len(tasks)))
 
 
 if __name__ == "__main__":
-    cli()
+    main()
