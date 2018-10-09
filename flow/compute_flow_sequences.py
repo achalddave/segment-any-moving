@@ -1,4 +1,4 @@
-"""Compute Flownet2 flow on videos."""
+"""Compute flow on videos."""
 
 import argparse
 import contextlib
@@ -7,8 +7,9 @@ import os
 import subprocess
 import time
 from datetime import datetime
+from math import ceil
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import numpy as np
 from natsort import natsorted
@@ -26,13 +27,129 @@ def gpu_from_queue(gpu_queue):
     gpu_queue.put(gpu)
 
 
-def compute_flownet_flow(flo_input_outputs,
-                         flownet_root,
-                         caffe_model,
-                         prototxt,
-                         gpu,
-                         logger=None,
-                         tmp_prefix=''):
+def compute_liteflownet_flow(flo_input_outputs, logger, gpu,
+                             liteflownet_root, cnn_model, tmp_prefix):
+    cnn_model_filenames = {
+        'kitti': 'liteflownet-ft-kitti.caffemodel',
+        'sintel': 'liteflownet-ft-sintel.caffemodel',
+        'chairs-things': 'liteflownet.caffemodel'
+    }
+    cnn_model = cnn_model_filenames[cnn_model]
+
+    caffe_bin = liteflownet_root / 'build' / 'tools' / 'caffe.bin'
+    proto_template_path = (
+        liteflownet_root / 'models' / 'testing' / 'deploy.prototxt')
+    cnn_model_path = (
+        liteflownet_root / 'models' / 'trained' / cnn_model)
+
+    with open(proto_template_path, 'r') as f:
+        proto_template = f.read()
+
+    dimensions = None
+    for image_path, _, _ in flo_input_outputs:
+        image_size = Image.open(image_path).size
+        if dimensions is None:
+            dimensions = image_size
+        else:
+            assert dimensions == image_size, (
+                'Image sizes in sequence do not match (%s: %s, vs %s: %s)' %
+                (flo_input_outputs[0][0], dimensions, image_path, image_size))
+
+    width, height = dimensions
+    divisor = 32
+    adapted_width = ceil(width / divisor) * divisor
+    adapted_height = ceil(height / divisor) * divisor
+    rescale_coeff_x = width / adapted_width
+    rescale_coeff_y = height / adapted_height
+
+    # Output .flo files to temporary directory in the first output path's
+    # parent directory.
+    tmp_output_dir = flo_input_outputs[0][2].parent
+    tmp_output_dir.mkdir(exist_ok=True, parents=True)
+
+    # Note: We ask LiteFlowNet to output flows to a temporary subdirectory
+    # in output, since LiteFlowNet has its own convention for how to name
+    # the output files. Then, we move the output files to match the
+    # convention of the input files.
+    with NamedTemporaryFile('w', prefix=tmp_prefix) as image1_text_f, \
+            NamedTemporaryFile('w', prefix=tmp_prefix) as image2_text_f, \
+            NamedTemporaryFile('w', prefix=tmp_prefix) as prototxt_f, \
+            TemporaryDirectory('w', dir=tmp_output_dir) as output_tmp:
+        image1_text_f.write('\n'.join(str(x[0]) for x in flo_input_outputs))
+        image2_text_f.write('\n'.join(str(x[1]) for x in flo_input_outputs))
+        replacement_list = {
+            '$ADAPTED_WIDTH': ('%d' % adapted_width),
+            '$ADAPTED_HEIGHT': ('%d' % adapted_height),
+            '$TARGET_WIDTH': ('%d' % width),
+            '$TARGET_HEIGHT': ('%d' % height),
+            '$SCALE_WIDTH': ('%.8f' % rescale_coeff_x),
+            '$SCALE_HEIGHT': ('%.8f' % rescale_coeff_y),
+            '$OUTFOLDER': ('%s' % '"' + output_tmp + '"'),
+            '$CNN': ('%s' % '"' + cnn_model + '-"'),
+            'tmp/img1.txt': image1_text_f.name,
+            'tmp/img2.txt': image2_text_f.name
+        }
+        proto = proto_template
+        for var, value in replacement_list.items():
+            proto = proto.replace(var, value)
+        prototxt_f.write(proto)
+
+        prototxt_f.flush()
+        image1_text_f.flush()
+        image2_text_f.flush()
+        command = [
+            str(caffe_bin), 'test', '-model', prototxt_f.name, '-weights',
+            str(cnn_model_path), '-iterations',
+            str(len(flo_input_outputs)), '-gpu',
+            str(gpu)
+        ]
+
+        if logger:
+            logger.info('Executing %s' % ' '.join(command))
+
+        try:
+            subprocess.check_output(command, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            logging.fatal('Failed command.\nException: %s\nOutput %s',
+                          e.returncode, e.output.decode('utf-8'))
+            raise
+
+        # Rename output files to match second image path.
+        output_tmp = Path(output_tmp)
+        print(list(output_tmp.iterdir()))
+        output_paths = [
+            output_tmp / (cnn_model + '-{:07d}.flo'.format(i))
+            for i in range(len(flo_input_outputs))
+        ]
+
+        for output_path, (_, _, new_output_path) in zip(
+                output_paths, flo_input_outputs):
+            output_path.rename(new_output_path)
+
+
+def compute_flownet2_flow(flo_input_outputs, logger, gpu,
+                          flownet_root, cnn_model, tmp_prefix):
+    model_info = {
+        'kitti': {
+            'weights':
+                'FlowNet2-KITTI/FlowNet2-KITTI_weights.caffemodel.h5',
+            'prototxt':
+                'FlowNet2-KITTI/FlowNet2-KITTI_deploy.prototxt.template'
+        },
+        'sintel': {
+            'weights':
+                'FlowNet2-Sintel/FlowNet2-CSS-Sintel_weights.caffemodel.h5',
+            'prototxt':
+                'FlowNet2-Sintel/FlowNet2-CSS-Sintel_deploy.prototxt.template'
+        },
+        'chairs-things': {
+            'weights': 'FlowNet2/FlowNet2_weights.caffemodel.h5',
+            'prototxt': 'FlowNet2/FlowNet2_deploy.prototxt.template'
+        }
+    }
+    caffe_model = flownet_root / 'models' / model_info[cnn_model]['weights']
+    prototxt = flownet_root / 'models' / model_info[cnn_model]['prototxt']
+
     os.environ['CAFFE_PATH'] = str(flownet_root)
     os.environ['PYTHONPATH'] = '%s:%s' % (flownet_root / 'python',
                                           os.environ['PYTHONPATH'])
@@ -68,9 +185,8 @@ def compute_flownet_flow(flo_input_outputs,
             raise
 
 
-def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
-                          flownet_root, tmp_prefix, gpu_queue, logger_name,
-                          convert_png):
+def compute_sequence_flow(image_paths, output_dir, flow_fn, flow_args,
+                          gpu_queue, logger_name, convert_png):
     times = {}
     times['start'] = time.time()
     file_logger = logging.getLogger(logger_name)
@@ -111,14 +227,13 @@ def compute_sequence_flow(image_paths, output_dir, prototxt, caffe_model,
         times['gpu_wait_start'] = time.time()
         with gpu_from_queue(gpu_queue) as gpu:
             times['gpu_wait_end'] = time.time()
-            compute_flownet_flow(
-                flo_input_outputs,
-                flownet_root,
-                caffe_model,
-                prototxt,
-                gpu,
-                file_logger,
-                tmp_prefix=tmp_prefix)
+            task = {
+                'flo_input_outputs': flo_input_outputs,
+                'logger': file_logger,
+                'gpu': gpu
+            }
+            task.update(flow_args)
+            flow_fn(**task)
     else:
         times['gpu_wait_start'] = times['gpu_wait_end'] = 0
 
@@ -157,7 +272,8 @@ def main():
         required=True,
         help='Directory containing a subdir for every sequence.')
     parser.add_argument('--output-dir', required=True)
-    parser.add_argument('--flownet2-dir', required=True)
+    parser.add_argument(
+        '--flow-type', choices=['flownet2', 'liteflownet'], required=True)
     parser.add_argument(
         '--recursive',
         action='store_true',
@@ -166,12 +282,6 @@ def main():
                 treated as a sequence directory. NOTE: Does not support
                 symlinked directories.""")
     parser.add_argument('--extension', default='.png')
-    parser.add_argument(
-        '--cnn-model',
-        default='kitti',
-        choices=[
-            'kitti', 'sintel', 'flyingthings'
-        ])
     parser.add_argument(
         '--convert-to-angle-magnitude-png',
         help=('Convert flo files to angle/magnitude PNGs, and do not keep '
@@ -188,6 +298,24 @@ def main():
               'image dimensions, and converting .flo to .png while other '
               'workers use the GPU.'))
 
+    flownet2_parser = parser.add_argument_group('Flownet2 params')
+    flownet2_parser.add_argument(
+        '--flownet2-dir', help='Path to flownet2 repo.')
+    flownet2_parser.add_argument(
+        '--flownet2-model',
+        default='kitti',
+        choices=['kitti', 'sintel', 'chairs-things'])
+
+    liteflownet_parser = parser.add_argument_group('Liteflownet Params')
+    liteflownet_parser.add_argument(
+        '--liteflownet-dir', help='Path to liteflownet repo')
+    liteflownet_parser.add_argument(
+        '--liteflownet-model',
+        default='liteflownet-ft-kitti',
+        help=('Model to use for evaluation. chairs-things maps to the '
+              '`liteflownet` model, `sintel` maps to `liteflownet-ft-sintel` '
+              'and `kitti` maps to `liteflownet-ft-kitti`.'),
+        choices=['chairs-things', 'sintel', 'kitti'])
     args = parser.parse_args()
 
     input_root = Path(args.input_dir)
@@ -204,35 +332,6 @@ def main():
     if args.extension[0] != '.':
         args.extension = '.' + args.extension
 
-    flownet_root = Path(args.flownet2_dir)
-
-    cnn_model = args.cnn_model
-    models_dir = flownet_root / 'models'
-    model_info = {
-        'kitti': {
-            'weights':
-                'FlowNet2-KITTI/FlowNet2-KITTI_weights.caffemodel.h5',
-            'prototxt':
-                'FlowNet2-KITTI/FlowNet2-KITTI_deploy.prototxt.template'
-        },
-        'sintel': {
-            'weights':
-                'FlowNet2-Sintel/FlowNet2-CSS-Sintel_weights.caffemodel.h5',
-            'prototxt':
-                'FlowNet2-Sintel/FlowNet2-CSS-Sintel_deploy.prototxt.template'
-        },
-        'flyingthings': {
-            'weights': 'FlowNet2/FlowNet2_weights.caffemodel.h5',
-            'prototxt': 'FlowNet2/FlowNet2_deploy.prototxt.template'
-        }
-    }
-
-    weights = models_dir / model_info[cnn_model]['weights']
-    prototxt = models_dir / model_info[cnn_model]['prototxt']
-
-    assert weights.exists(), 'Caffe model file does not exist at %s' % weights
-    assert prototxt.exists(), 'Caffe prototxt does not exist at %s' % prototxt
-
     if args.recursive:
         sequences = sorted(
             set(x.parent for x in input_root.rglob('*' + args.extension)))
@@ -248,6 +347,26 @@ def main():
     for gpu in args.gpus:
         gpu_queue.put(gpu)
 
+    if args.flow_type == 'flownet2':
+        flownet2_root = Path(args.flownet2_dir)
+        assert args.flownet2_model is not None
+        assert flownet2_root.exists()
+        flow_fn = compute_flownet2_flow
+        flow_args = {
+            'flownet_root': flownet2_root,
+            'cnn_model': args.flownet2_model,
+            'tmp_prefix': file_name
+        }
+    else:
+        liteflownet_root = Path(args.liteflownet_dir)
+        assert args.liteflownet_model is not None
+        assert liteflownet_root.exists()
+        flow_fn = compute_liteflownet_flow
+        flow_args = {
+            'liteflownet_root': liteflownet_root,
+            'cnn_model': args.liteflownet_model,
+            'tmp_prefix': file_name
+        }
     tasks = []
     for sequence_path in sequences:
         output_dir = output_root / (sequence_path.relative_to(input_root))
@@ -255,15 +374,13 @@ def main():
             list(sequence_path.glob('*' + args.extension)),
             key=lambda x: x.stem)
         tasks.append({
-            'gpu_queue': gpu_queue,
             'image_paths': image_paths,
             'output_dir': output_dir,
-            'tmp_prefix': file_name,
-            'prototxt': prototxt,
-            'caffe_model': weights,
-            'flownet_root': flownet_root,
+            'flow_fn': flow_fn,
+            'flow_args': flow_args,
+            'gpu_queue': gpu_queue,
             'logger_name': logging_path,
-            'convert_png': args.convert_to_angle_magnitude_png
+            'convert_png': args.convert_to_angle_magnitude_png,
         })
 
     list(
