@@ -1,4 +1,13 @@
 import logging
+from datetime import datetime
+from pathlib import Path
+
+
+def add_time_to_path(logging_filepath):
+    logging_filepath = Path(logging_filepath)
+    now = datetime.now().strftime('%b%d-%H-%M-%S')
+    return logging_filepath.with_name(logging_filepath.stem + now +
+                                      logging_filepath.suffix)
 
 
 def setup_logging(logging_filepath):
@@ -11,6 +20,9 @@ def setup_logging(logging_filepath):
     Args:
         logging_filepath (str): Path to log to.
     """
+    if isinstance(logging_filepath, Path):
+        logging_filepath = str(logging_filepath)
+
     log_format = ('%(asctime)s %(filename)s:%(lineno)4d: ' '%(message)s')
     stream_date_format = '%H:%M:%S'
     file_date_format = '%m/%d %H:%M:%S'
