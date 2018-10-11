@@ -243,7 +243,10 @@ def _match_detections_single_timestep(tracks, detections, tracking_params):
         track_detection = track.detections[-1]
         for i in candidates[track.id]:
             already_matched = matched_tracks[i] is not None
-            different_label = track_detection.label != detections[i].label
+            if tracking_params['ignore_labels']:
+                different_label = False
+            else:
+                different_label = track_detection.label != detections[i].label
             too_far = (track_distance(track, detections[i]) >
                        tracking_params['spatial_dist_max'])
             if already_matched or different_label or too_far:
@@ -402,100 +405,221 @@ def visualize_detections(image,
     return image
 
 
-def output_fbms_tracks(tracks, groundtruth_dir, output_file):
-    from utils.fbms import utils as fbms_utils
+def track(frame_paths,
+          frame_detections,
+          tracking_params,
+          progress=True,
+          filter_label=None):
+    """
+    Args:
+        frame_paths (list): List of paths to frames.
+        frame_detections (list): List of detection results for each frame. Each
+            element is a dictionary containing keys 'boxes', 'masks',
+            and 'keypoints'.
+        tracking_params (dict)
+        label_list (list): List of label names.
+        filter_label (str):
+    """
+    all_tracks = []
+    current_tracks = []
+    track_id = 0
+    progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
+    for timestamp, (image_path, image_results) in enumerate(
+            zip(frame_paths, frame_detections)):
+        if timestamp > 0:
+            progress.update()
+        for track in current_tracks:
+            for detection in track.detections:
+                detection.clear_cache()
 
-    logging.info('Outputting FBMS style tracks')
+        image = cv2.imread(str(image_path))[:, :, ::-1]  # BGR -> RGB
 
+        boxes, masks, _, labels = vis.convert_from_cls_format(
+            image_results['boxes'], image_results['segmentations'],
+            image_results['keypoints'])
+
+        if boxes is None:
+            logging.info('No predictions for image %s', image_path.name)
+            boxes, masks = [], []
+
+        if ('features' in image_results
+                and tracking_params['appearance_feature'] == 'mask'):
+            # features are of shape (num_segments, d)
+            mask_features = list(image_results['features'])
+        else:
+            mask_features = [None for _ in masks]
+
+        detections = [
+            Detection(box[:4], box[4], label, timestamp, image, mask,
+                      feature) for box, mask, label, feature in zip(
+                          boxes, masks, labels, mask_features)
+            if (box[4] > tracking_params['score_continue_min'] and (
+                filter_label is None or label == filter_label))
+        ]
+        matched_tracks = match_detections(current_tracks, detections,
+                                          tracking_params)
+
+        continued_tracks = []
+        for detection, track in zip(detections, matched_tracks):
+            if track is None:
+                if detection.score > tracking_params['score_init_min']:
+                    track = Track(track_id)
+                    all_tracks.append(track)
+                    track_id += 1
+                else:
+                    continue
+
+            track.add_detection(detection, timestamp)
+            continued_tracks.append(track)
+
+        continued_track_ids = set([x.id for x in continued_tracks])
+        skipped_tracks = []
+        for track in current_tracks:
+            if (track.id not in continued_track_ids
+                    and (track.last_timestamp() - timestamp) <
+                    tracking_params['frames_skip_max']):
+                skipped_tracks.append(track)
+
+        current_tracks = continued_tracks + skipped_tracks
+    return all_tracks
+
+
+def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
+    filtered_tracks = []
+    for track in tracks:
+        is_person = label_list[track.detections[-1].label] == 'person'
+        is_long_enough = len(track.detections) > 4
+        has_high_score = any(x.score >= 0.5 for x in track.detections)
+        if is_person and is_long_enough and has_high_score:
+            filtered_tracks.append(track)
+
+    # Map frame number to list of Detections
+    detections_by_frame = collections.defaultdict(list)
+    for track in filtered_tracks:
+        for detection in track.detections:
+            detections_by_frame[detection.timestamp].append(detection)
+    assert len(detections_by_frame) > 0
+
+    output_str = ''
+    # The last three fields are 'x', 'y', and 'z', and are only used for
+    # 3D object detection.
+    output_line_format = (
+        '{frame},{track_id},{left},{top},{width},{height},{conf},-1,-1,-1'
+        '\n')
+    for timestamp, frame_detections in sorted(
+            detections_by_frame.items(), key=lambda x: x[0]):
+        for detection in frame_detections:
+            x0, y0, x1, y1 = detection.box
+            width = x1 - x0
+            height = y1 - y0
+            output_str += output_line_format.format(
+                frame=frame_numbers[timestamp],
+                track_id=detection.track.id,
+                left=x0,
+                top=y0,
+                width=width,
+                height=height,
+                conf=detection.score,
+                x=-1,
+                y=-1,
+                z=-1)
+    with open(output_track_file, 'w') as f:
+        f.write(output_str)
+
+
+def visualize_tracks(tracks,
+                     frame_paths,
+                     dataset,
+                     tracking_params,
+                     output_dir=None,
+                     output_video=None,
+                     output_video_fps=10,
+                     progress=False):
+    """
+    Args:
+        tracks (list): List of Track objects
+        frame_paths (list): List of frame paths.
+        dataset (str): Dataset for utils/vis.py
+        tracking_params (dict): Tracking parameters.
+    """
     # Map frame number to list of Detections
     detections_by_frame = collections.defaultdict(list)
     for track in tracks:
         for detection in track.detections:
             detections_by_frame[detection.timestamp].append(detection)
-    # Disable defaultdict functionality so missing keys raise errors.
-    detections_by_frame.default_factory = None
-    assert len(detections_by_frame) > 0
 
-    visualize = True
-    groundtruth = fbms_utils.FbmsGroundtruth(Path(groundtruth_dir))
-    segmentations = {}
-    image_size = tracks[0].detections[0].image.shape[:2]
-    for frame_offset, frame_path in groundtruth.frame_label_paths.items():
-        segmentation = np.zeros(image_size)
-        if frame_offset not in detections_by_frame:
-            segmentations[frame_offset] = segmentation
-            continue
-        # Sort by ascending score; this is the order we will paint
-        # segmentations in.
-        detections = sorted(
-            detections_by_frame[frame_offset], key=lambda x: x.score)
-        for i, detection in enumerate(detections):
-            mask = detection.decoded_mask()
-            label = detection.track.id + 1
-            segmentation[mask == 1] = label
-        segmentations[frame_offset] = segmentation
+    if output_video is not None:
+        images = []
+    for timestamp, image_path in enumerate(
+            tqdm(frame_paths, disable=not progress)):
+        image = cv2.imread(str(image_path))
+        image = image[:, :, ::-1]  # BGR -> RGB
+        new_image = visualize_detections(
+            image,
+            detections_by_frame[timestamp],
+            dataset=dataset,
+            tracking_params=tracking_params)
 
-    fbms_tracks = fbms_utils.masks_to_tracks(segmentations)
-    fbms_tracks_str = fbms_utils.get_tracks_text(fbms_tracks,
-                                                 groundtruth.num_frames)
-    with open(output_file, 'w') as f:
-        f.write(fbms_tracks_str)
+        if output_video is not None:
+            images.append(new_image)
+
+        if output_dir is not None:
+            new_image = PIL.Image.fromarray(new_image)
+            new_image.save(output_dir / (image_path.name + '.png'))
+
+    if output_video is not None:
+        clip = ImageSequenceClip(images, fps=output_video_fps)
+        clip.write_videofile(str(output_video), verbose=progress)
 
 
-def main():
-    # Use first line of file docstring as description if it exists.
-    parser = argparse.ArgumentParser(
-        description=__doc__.split('\n')[0] if __doc__ else '',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--detectron-dir', required=True)
-    parser.add_argument('--images-dir', required=True)
-    parser.add_argument('--output-dir')
-    parser.add_argument('--output-video')
-    parser.add_argument('--output-video-fps', default=10, type=float)
+def create_tracking_parser():
+    """Create a parser with tracking arguments.
+
+    Usage:
+        tracking_parser = create_tracking_parser()
+
+        parser = argparse.ArgumentParser(parents=[tracking_parser])
+
+        tracking_params, remaining_argv = tracking_parser.parse_known_args()
+        args = parser.parse_args(remaining_argv)
+
+    Note that if add_tracking_params adds any required arguments, then the
+    above code will cause --help to fail. Since the `tracking_parser` returned
+    from this function does not implement --help, it will try to parse the
+    known arguments even if --help is specified, and fail when a required
+    argument is missing.
+    """
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    add_tracking_arguments(parent_parser)
+    return parent_parser
+
+
+def add_tracking_arguments(root_parser):
+    """Add tracking params to an argument parser.  """
+    parser = root_parser.add_argument_group('Tracking params')
     parser.add_argument(
-        '--output-track-file',
-        help='Optional; path to output MOT17 style tracking output.')
-    parser.add_argument('--extension', default='.png')
-    parser.add_argument('--dataset', default='coco', choices=['coco'])
-    parser.add_argument(
-        '--filename-format', choices=['frame', 'sequence_frame', 'fbms'],
-        default='frame',
-        help=('Specifies how to get frame number from the filename. '
-              '"frame": the filename is the frame number, '
-              '"sequence_frame": the frame number is separated by an '
-                                 'underscore'
-              '"fbms": assume fbms style frame numbers'))
-    parser.add_argument('--output-fbms-file')
-    parser.add_argument(
-        '--fbms-groundtruth',
-        help=('Required if --output-fbms-file is specified. Should contain a '
-              'single.dat file of FBMS groundtruth. E.g. '
-              '{FBMS_ROOT}/TestSet/tennis/GroundTruth/'))
-
-    param_parser = parser.add_argument_group('Tracking parameters')
-    param_parser.add_argument(
         '--score-init-min',
         default=0.9,
         type=float,
         help='Detection confidence threshold for starting a new track')
-    param_parser.add_argument(
+    parser.add_argument(
         '--score-continue-min',
         default=0.7,
         type=float,
         help=('Detection confidence threshold for adding a detection to '
               'existing track.'))
-    param_parser.add_argument(
+    parser.add_argument(
         '--frames-skip-max',
         default=10,
         type=int,
         help='How many frames a track is allowed to miss detections in.')
-    param_parser.add_argument(
+    parser.add_argument(
         '--spatial-dist-max',
         default=0.2,
         type=float,
         help=('Maximum distance between matched detections, as a fraction of '
               'the image diagonal.'))
-    param_parser.add_argument(
+    parser.add_argument(
         '--area-ratio',
         default=0.5,
         type=float,
@@ -503,12 +627,12 @@ def main():
               'To match two detections, the ratio between their areas must '
               'be between this threshold and 1/threshold. Setting this to '
               '0 disables checking of area ratios.'))
-    param_parser.add_argument(
+    parser.add_argument(
         '--iou-min',
         default=0.1,
         type=float,
         help='Minimum IoU between matched detections.')
-    param_parser.add_argument(
+    parser.add_argument(
         '--iou-gap-min',
         default=0,
         type=float,
@@ -517,13 +641,78 @@ def main():
               'highest IoU has IoU > IoU of second highest IoU detection + '
               'gap, then the highest IoU detection is automatically assigned '
               'to the track.'))
+    parser.add_argument(
+        '--ignore-labels',
+        action='store_true',
+        help=('Ignore labels when matching detections. By default, we only '
+              'match detections if their labels match.'))
     # TODO(achald): Add help text.
-    param_parser.add_argument(
+    parser.add_argument(
         '--appearance-feature',
         choices=['mask', 'histogram'],
         default='histogram')
     # TODO(achald): Add help text.
-    param_parser.add_argument('--appearance-gap', default=0, type=float)
+    parser.add_argument('--appearance-gap', default=0, type=float)
+
+    parser = root_parser.add_argument_group('debug')
+    parser.add_argument(
+        '--draw-spatial-threshold',
+        action='store_true',
+        help='Draw a diagnostic showing the spatial distance threshold')
+
+
+def load_detectron_pickles(detectron_input, get_framenumber):
+    """Load detectron pickle files from a directory.
+
+    Returns:
+        dict mapping pickle filename to data in pickle file.
+    """
+    detection_results = {}
+    for x in detectron_input.glob('*.pickle'):
+        if x.stem == 'merged':
+            logging.warn('Ignoring merged.pickle for backward compatibility')
+            continue
+
+        try:
+            get_framenumber(x.stem)
+        except ValueError:
+            logging.fatal('Expected pickle files to be named <frame_id>.pickle'
+                          ', found %s.' % x)
+            raise
+
+        with open(x, 'rb') as f:
+            detection_results[x.stem] = pickle.load(f)
+    return detection_results
+
+
+def main():
+    tracking_parser = create_tracking_parser()
+
+    # Use first line of file docstring as description if it exists.
+    parser = argparse.ArgumentParser(
+        description=__doc__.split('\n')[0] if __doc__ else '',
+        parents=[tracking_parser],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--detectron-dir', type=Path, required=True)
+    parser.add_argument('--images-dir', type=Path, required=True)
+    parser.add_argument('--output-dir', type=Path)
+    parser.add_argument('--output-video', type=Path)
+    parser.add_argument('--output-video-fps', default=10, type=float)
+    parser.add_argument(
+        '--output-track-file',
+        type=Path,
+        help='Optional; path to output MOT17 style tracking output.')
+    parser.add_argument('--extension', default='.png')
+    parser.add_argument(
+        '--dataset', default='coco', choices=['coco', 'objectness'])
+    parser.add_argument(
+        '--filename-format', choices=['frame', 'sequence_frame', 'fbms'],
+        default='frame',
+        help=('Specifies how to get frame number from the filename. '
+              '"frame": the filename is the frame number, '
+              '"sequence_frame": the frame number is separated by an '
+                                 'underscore'
+              '"fbms": assume fbms style frame numbers'))
 
     debug_parser = parser.add_argument_group('debug')
     debug_parser.add_argument(
@@ -531,7 +720,11 @@ def main():
         action='store_true',
         help='Draw a diagnostic showing the spatial distance threshold')
 
-    args = parser.parse_args()
+    tracking_params, remaining_argv = tracking_parser.parse_known_args()
+    args = parser.parse_args(remaining_argv)
+
+    tracking_params = vars(tracking_params)
+
     assert (args.output_dir is not None
             or args.output_video is not None
             or args.output_track_file is not None), (
@@ -552,8 +745,9 @@ def main():
         logging.debug(f.read())
 
     logging.info('Args: %s', pprint.pformat(vars(args)))
+    logging.info('Tracking params: %s', pprint.pformat(tracking_params))
 
-    detectron_input = Path(args.detectron_dir)
+    detectron_input = args.detectron_dir
     if not detectron_input.is_dir():
         raise ValueError(
             '--detectron-dir %s is not a directory!' % args.detectron_dir)
@@ -569,24 +763,9 @@ def main():
         raise ValueError(
             'Unknown --filename-format: %s' % args.filename_format)
 
-    data = {}
-    for x in detectron_input.glob('*.pickle'):
-        if x.stem == 'merged':
-            logging.info('NOTE: Ignoring merged.pickle for backward '
-                         'compatibility')
-            continue
-
-        try:
-            get_framenumber(x.stem)
-        except ValueError:
-            logging.fatal('Expected pickle files to be named <frame_id>.pickle'
-                          ', found %s.' % x)
-            raise
-
-        with open(x, 'rb') as f:
-            data[x.stem] = pickle.load(f)
-
-    frames = sorted(data.keys(), key=get_framenumber)
+    detection_results = load_detectron_pickles(args.detectron_input,
+                                               get_framenumber)
+    frames = sorted(detection_results.keys(), key=get_framenumber)
 
     should_visualize = (args.output_dir is not None
                         or args.output_video is not None)
@@ -594,161 +773,30 @@ def main():
     if should_output_mot:
         logging.info('Outputing MOT style tracks to %s',
                      args.output_track_file)
-    should_output_fbms = args.output_fbms_file is not None
-    if should_output_fbms:
-        assert args.fbms_groundtruth is not None
-        logging.info('Outputting FBMS style tracks to %s',
-                     args.output_fbms_file)
-    all_tracks = []
-    current_tracks = []
-    track_id = 0
 
-    tracking_params = {
-        x: getattr(args, x)
-        for x in [
-            'score_init_min', 'score_continue_min', 'frames_skip_max',
-            'spatial_dist_max', 'area_ratio', 'iou_min', 'iou_gap_min',
-            'appearance_feature', 'appearance_gap', 'draw_spatial_threshold'
-        ]
-    }
     label_list = get_classes(args.dataset)
-    for timestamp, image_name in enumerate(tqdm(frames)):
-        for track in current_tracks:
-            for detection in track.detections:
-                detection.clear_cache()
 
-        image = cv2.imread(
-            os.path.join(args.images_dir, image_name + args.extension))
-        image = image[:, :, ::-1]  # BGR -> RGB
-
-        image_data = data[image_name]
-        boxes, masks, _, labels = vis.convert_from_cls_format(
-            image_data['boxes'], image_data['segmentations'],
-            image_data['keypoints'])
-
-        if boxes is None:
-            logging.info('No predictions for image %s', image_name)
-            boxes, masks = [], []
-
-        if ('features' in image_data
-                and tracking_params['appearance_feature'] == 'mask'):
-            # features are of shape (num_segments, d)
-            mask_features = list(image_data['features'])
-        else:
-            mask_features = [None for _ in masks]
-
-        detections = [
-            Detection(box[:4], box[4], label, timestamp, image, mask,
-                      feature) for box, mask, label, feature in zip(
-                          boxes, masks, labels, mask_features)
-            if box[4] > args.score_continue_min
-            # and label_list[label] == 'person')
-        ]
-        matched_tracks = match_detections(current_tracks, detections,
-                                          tracking_params)
-
-        continued_tracks = []
-        for detection, track in zip(detections, matched_tracks):
-            if track is None:
-                if detection.score > args.score_init_min:
-                    track = Track(track_id)
-                    all_tracks.append(track)
-                    track_id += 1
-                else:
-                    continue
-
-            track.add_detection(detection, timestamp)
-            continued_tracks.append(track)
-
-        continued_track_ids = set([x.id for x in continued_tracks])
-        skipped_tracks = []
-        for track in current_tracks:
-            if track.id not in continued_track_ids and (
-                    track.last_timestamp() - timestamp) < args.frames_skip_max:
-                skipped_tracks.append(track)
-
-        current_tracks = continued_tracks + skipped_tracks
+    frame_paths = [
+        args.images_dir / (frame + args.extension) for frame in frames
+    ]
+    # To filter tracks to only focus on people, add
+    #   filter_label=label_list.index('person'))
+    all_tracks = track(frame_paths,
+                       [detection_results[frame] for frame in frames],
+                       tracking_params)
 
     if should_output_mot:
         logging.info('Outputting MOT style tracks')
-        filtered_tracks = []
-        for track in all_tracks:
-            is_person = label_list[track.detections[-1].label] == 'person'
-            is_long_enough = len(track.detections) > 4
-            has_high_score = any(x.score >= 0.5 for x in track.detections)
-            if is_person and is_long_enough and has_high_score:
-                filtered_tracks.append(track)
-
-        # Map frame number to list of Detections
-        detections_by_frame = collections.defaultdict(list)
-        for track in filtered_tracks:
-            for detection in track.detections:
-                detections_by_frame[detection.timestamp].append(detection)
-        assert len(detections_by_frame) > 0
-
-        output_str = ''
-        # The last three fields are 'x', 'y', and 'z', and are only used for
-        # 3D object detection.
-        output_line_format = (
-            '{frame},{track_id},{left},{top},{width},{height},{conf},-1,-1,-1'
-            '\n')
-        for timestamp, frame_detections in sorted(
-                detections_by_frame.items(), key=lambda x: x[0]):
-            for detection in frame_detections:
-                x0, y0, x1, y1 = detection.box
-                width = x1 - x0
-                height = y1 - y0
-                output_str += output_line_format.format(
-                    frame=get_framenumber(frames[timestamp]),
-                    track_id=detection.track.id,
-                    left=x0,
-                    top=y0,
-                    width=width,
-                    height=height,
-                    conf=detection.score,
-                    x=-1,
-                    y=-1,
-                    z=-1)
-        with open(args.output_track_file, 'w') as f:
-            f.write(output_str)
+        output_mot_tracks(all_tracks, label_list,
+                          [get_framenumber(x[1]) for x in frames],
+                          args.output_track_file)
         logging.info('Output tracks to %s' % args.output_track_file)
-
-    if should_output_fbms:
-        output_fbms_tracks(all_tracks, args.fbms_groundtruth,
-                           args.output_fbms_file)
-        logging.info('Output FBMS tracks to %s' % args.output_fbms_file)
 
     if should_visualize:
         logging.info('Visualizing tracks')
-        # Map frame number to list of Detections
-        detections_by_frame = collections.defaultdict(list)
-        for track in all_tracks:
-            for detection in track.detections:
-                detections_by_frame[detection.timestamp].append(detection)
-
-        if args.output_video is not None:
-            images = []
-        for timestamp, image_name in enumerate(tqdm(frames)):
-            image = cv2.imread(
-                os.path.join(args.images_dir, image_name + args.extension))
-            image = image[:, :, ::-1]  # BGR -> RGB
-            new_image = visualize_detections(
-                image,
-                detections_by_frame[timestamp],
-                dataset=args.dataset,
-                tracking_params=tracking_params)
-
-            if args.output_video is not None:
-                images.append(new_image)
-
-            if args.output_dir is not None:
-                new_image = PIL.Image.fromarray(new_image)
-                new_image.save(
-                    os.path.join(args.output_dir, image_name + '.png'))
-
-        if args.output_video is not None:
-            clip = ImageSequenceClip(images, fps=args.output_video_fps)
-            clip.write_videofile(args.output_video)
+        visualize_tracks(all_tracks, frame_paths, args.dataset,
+                         tracking_params, args.output_dir, args.output_video,
+                         args.output_video_fps)
 
 
 if __name__ == "__main__":
