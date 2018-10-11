@@ -20,7 +20,7 @@ from scipy.spatial.distance import cosine
 import utils.vis as vis
 from utils.colors import colormap
 from utils.datasets import get_classes
-from utils.distance import chi_square_distance, intersection_distance
+from utils.distance import chi_square_distance  # , intersection_distance
 from utils.log import setup_logging
 
 
@@ -86,8 +86,7 @@ class Detection():
     def compute_center_box(self):
         if self._cached_values['center_box'] is None:
             x0, y0, x1, y1 = self.box
-            self._cached_values['center_box'] = ((x0 + x1) / 2,
-                                                   (y0 + y1) / 2)
+            self._cached_values['center_box'] = ((x0 + x1) / 2, (y0 + y1) / 2)
         return self._cached_values['center_box']
 
     def compute_area(self):
@@ -199,7 +198,8 @@ def track_distance(track, detection):
     # else:
     #     predicted_box = track.detections[-1].box
     #     predicted_center = track.detections[-1].compute_center_box()
-    # area = decay_weighted_mean([x.compute_area_bbox() for x in track.detections])
+    # area = decay_weighted_mean(
+    #     [x.compute_area_bbox() for x in track.detections])
     # target_area = detection.compute_area_bbox()
     # return (max([abs(p1 - p0)
     #              for p0, p1 in zip(predicted_box, detection.box)]) / area)
@@ -388,7 +388,10 @@ def visualize_detections(image,
         #         tipLength=1.0)
         # else:
         #     cv2.circle(
-        #         image, (int(cx), int(cy)), radius=3, thickness=1, color=color)
+        #         image, (int(cx), int(cy)),
+        #         radius=3,
+        #         thickness=1,
+        #         color=color)
         image = vis.vis_mask(
             image,
             detection.decoded_mask(),
@@ -710,8 +713,7 @@ def main():
         default='frame',
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
-              '"sequence_frame": the frame number is separated by an '
-                                 'underscore'
+              '"sequence_frame": frame number is separated by an underscore'
               '"fbms": assume fbms style frame numbers'))
 
     debug_parser = parser.add_argument_group('debug')
