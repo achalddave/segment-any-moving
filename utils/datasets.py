@@ -16,5 +16,7 @@ def get_classes(dataset):
             'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
             'scissors', 'teddy bear', 'hair drier', 'toothbrush'
         ]
+    elif dataset == 'objectness':
+        return ['__background__', 'object']
     else:
         raise ValueError('Unknown dataset: %s' % dataset)
