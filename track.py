@@ -46,6 +46,17 @@ class Detection():
                  image=None,
                  mask=None,
                  mask_feature=None):
+        """
+        Args:
+            box (tuple): (x1, y1, x2, y2)
+            score (float)
+            label (int)
+            timestamp (int)
+            image (np.ndarray)
+            mask (rles): Masks as encoded by pycocotools.
+            mask_feature (np.ndarray): 1d array consisting of features for this
+                detection.
+        """
         self.box = box  # (x1, y1, x2, y2)
         self.score = score
         self.label = label
@@ -54,6 +65,7 @@ class Detection():
         self.mask = mask
         self.mask_feature = mask_feature
         self.track = None
+
         self._cached_values = {
             'contour_moments': None,
             'center_box': None,
@@ -419,7 +431,7 @@ def track(frame_paths,
         frame_detections (list): List of detection results for each frame. Each
             element is a dictionary containing keys 'boxes', 'masks',
             and 'keypoints'.
-        tracking_params (dict)
+        tracking_params (dict): See add_tracking_arguments() for details.
         label_list (list): List of label names.
         filter_label (str):
     """
