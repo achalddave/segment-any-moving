@@ -116,7 +116,6 @@ def compute_liteflownet_flow(flo_input_outputs, logger, gpu,
 
         # Rename output files to match second image path.
         output_tmp = Path(output_tmp)
-        print(list(output_tmp.iterdir()))
         output_paths = [
             output_tmp / (cnn_model + '-{:07d}.flo'.format(i))
             for i in range(len(flo_input_outputs))
