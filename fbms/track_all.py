@@ -57,7 +57,7 @@ def main():
         parents=[tracking_parser],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '--detectron-dir',
+        '--detections-dir',
         type=Path,
         help=('Contains subdirectories for each FBMS sequence, each of which '
               'contain pickle files of detections for each frame.'),
@@ -91,10 +91,10 @@ def main():
     logging.info('Args: %s', pprint.pformat(vars(args)))
     logging.info('Tracking params: %s', pprint.pformat(tracking_params))
 
-    detectron_input = args.detectron_dir
+    detectron_input = args.detections_root
     if not detectron_input.is_dir():
         raise ValueError(
-            '--detectron-dir %s is not a directory!' % args.detectron_dir)
+            '--detectron-dir %s is not a directory!' % args.detections_root)
 
     for split in ['TestSet', 'TrainingSet']:
         if (detectron_input / split).exists():

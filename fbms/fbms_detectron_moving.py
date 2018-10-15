@@ -144,7 +144,7 @@ def main():
         required=True,
         help='Directory containing estimated PNG motion masks for each frame.')
     parser.add_argument(
-        '--detectron-root',
+        '--detections-root',
         help='Directory containing outputs of detectron on FBMS.',
         required=True)
     parser.add_argument(
@@ -162,7 +162,7 @@ def main():
               '"fbms": assume fbms style frame numbers'))
     args = parser.parse_args()
 
-    detectron_root = Path(args.detectron_root)
+    detectron_root = Path(args.detections_root)
     motion_root = Path(args.motion_masks_root)
 
     dataset = COCO(args.fbms_annotation_json)

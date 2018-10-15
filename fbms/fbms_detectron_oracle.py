@@ -191,7 +191,7 @@ def main():
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--fbms-root', required=True)
-    parser.add_argument('--detectron-outputs',
+    parser.add_argument('--detections-root',
                         required=True,
                         help="""
                         Directory containing detectron outputs. Assumed to
@@ -224,7 +224,7 @@ def main():
     fbms_root = pathlib.Path(args.fbms_root)
     assert fbms_root.exists()
 
-    detectron_root = pathlib.Path(args.detectron_outputs)
+    detectron_root = pathlib.Path(args.detections_root)
     assert detectron_root.exists()
 
     use_train = args.set in ('train', 'all')
