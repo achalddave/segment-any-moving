@@ -680,7 +680,8 @@ def load_detectron_pickles(detectron_input, get_framenumber):
     """Load detectron pickle files from a directory.
 
     Returns:
-        dict mapping pickle filename to data in pickle file.
+        dict, mapping pickle filename to data in pickle file, which should
+        be a dictionary containing keys 'boxes', 'masks', and 'keypoints'.
     """
     detection_results = {}
     for x in detectron_input.glob('*.pickle'):
