@@ -728,12 +728,6 @@ def main():
               '"sequence_frame": frame number is separated by an underscore'
               '"fbms": assume fbms style frame numbers'))
 
-    debug_parser = parser.add_argument_group('debug')
-    debug_parser.add_argument(
-        '--draw-spatial-threshold',
-        action='store_true',
-        help='Draw a diagnostic showing the spatial distance threshold')
-
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
 
