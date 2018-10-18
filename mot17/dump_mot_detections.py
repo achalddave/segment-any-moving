@@ -8,7 +8,7 @@ from pprint import pformat
 
 from tqdm import tqdm
 
-from track import Detection
+from tracker.track import Detection
 from utils.datasets import get_classes
 from utils.log import setup_logging
 from utils.vis import convert_from_cls_format

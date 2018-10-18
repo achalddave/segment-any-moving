@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-import track as tracker
+import tracker.track as tracker
 import utils.log as log_utils
 from utils.fbms import utils as fbms_utils
 

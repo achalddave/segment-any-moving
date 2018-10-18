@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 import utils.vis as vis
 from utils.distance import chi_square_distance, NeighborsQueue
-from track import Detection
+from tracker.track import Detection
 
 MIN_QUERY_SCORE = 0.9
 MIN_NEIGHBOR_SCORE = 0.7
