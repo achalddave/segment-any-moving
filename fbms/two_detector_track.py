@@ -176,7 +176,7 @@ def main():
               '--init-detections-dir or --continue-detections-dir '
               'detections.'))
     parser.add_argument('--save-video', action='store_true')
-    parser.add_argument('--fps', type=int, default=30)
+    parser.add_argument('--fps', type=int, default=10)
     parser.add_argument('--extension', default='.jpg')
     parser.add_argument(
         '--vis-dataset',
