@@ -107,9 +107,6 @@ def standardized_detections(detections):
 def merge_detections(detections1, detections2):
     output = {'boxes': [], 'segmentations': [], 'keypoints': []}
 
-    detections1 = standardized_detections(detections1)
-    detections2 = standardized_detections(detections2)
-
     for c, boxes1 in enumerate(detections1['boxes']):
         masks1 = detections1['segmentations'][c]
         keypoints1 = detections1['keypoints'][c]
