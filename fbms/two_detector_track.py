@@ -174,6 +174,8 @@ def main():
         default='objectness',
         choices=['coco', 'objectness'],
         help='Dataset to use for mapping label indices to names.')
+    parser.add_argument('--save-images', action='store_true')
+    parser.add_argument('--filter-sequences', default=[], nargs='*', type=str)
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -235,11 +237,15 @@ def main():
                 continue_detections[file])
 
             continue_nonoverlapping = filter_overlapping(
-                filter_scores(detection, tracking_params['score_continue_min']),
+                filter_scores(detection,
+                              tracking_params['score_continue_min']),
                 continue_file_detection)
             merged_detections[file] = merge_detections(
                 detection, continue_nonoverlapping)
         return merged_detections
+
+    if not args.filter_sequences:
+        args.filter_sequences = None
 
     track_fbms(
         fbms_split_root=args.fbms_split_root,
@@ -249,7 +255,9 @@ def main():
         frame_extension=args.extension,
         save_video=True,
         vis_dataset=args.vis_dataset,
-        fps=args.fps)
+        fps=args.fps,
+        save_images=args.save_images,
+        filter_sequences=args.filter_sequences)
 
 
 if __name__ == "__main__":
