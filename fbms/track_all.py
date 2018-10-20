@@ -91,10 +91,10 @@ def main():
     logging.info('Args: %s', pprint.pformat(vars(args)))
     logging.info('Tracking params: %s', pprint.pformat(tracking_params))
 
-    detectron_input = args.detections_root
+    detectron_input = args.detections_dir
     if not detectron_input.is_dir():
         raise ValueError(
-            '--detectron-dir %s is not a directory!' % args.detections_root)
+            '--detectron-dir %s is not a directory!' % args.detections_dir)
 
     for split in ['TestSet', 'TrainingSet']:
         if (detectron_input / split).exists():
