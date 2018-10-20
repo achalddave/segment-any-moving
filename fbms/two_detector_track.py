@@ -19,6 +19,21 @@ from tracker import track as tracker
 from utils.fbms import utils as fbms_utils
 
 
+def filter_scores(detection, threshold):
+    output = {'boxes': [], 'segmentations': [], 'keypoints': []}
+    for c, boxes in enumerate(detection['boxes']):
+        selected = np.where(boxes[:, 4] > threshold)[0]
+        output['boxes'].append(boxes[selected])
+        output['segmentations'].append(
+            [detection['segmentations'][c][i] for i in selected])
+        if detection['keypoints'][c]:
+            output['keypoints'].append(
+                [detection['keypoints'][c][i] for i in selected])
+        else:
+            output['keypoints'].append([])
+    return output
+
+
 def filter_overlapping(filter_detections, detections):
     """Remove detections in `detections` overlapping with filter_detections.
 
@@ -220,7 +235,8 @@ def main():
                 continue_detections[file])
 
             continue_nonoverlapping = filter_overlapping(
-                detection, continue_file_detection)
+                filter_scores(detection, tracking_params['score_continue_min']),
+                continue_file_detection)
             merged_detections[file] = merge_detections(
                 detection, continue_nonoverlapping)
         return merged_detections
