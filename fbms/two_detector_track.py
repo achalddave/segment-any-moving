@@ -34,7 +34,7 @@ def filter_scores(detection, threshold):
     return output
 
 
-def filter_overlapping(filter_detections, detections):
+def filter_overlapping(filter_detections, detections, overlap_threshold):
     """Remove detections in `detections` overlapping with filter_detections.
 
     The syntax matches that of python's `filter`, so that the second argument
@@ -43,6 +43,7 @@ def filter_overlapping(filter_detections, detections):
     Args:
         from_detections (dict): Detections to filter from.
         filter_detections (dict): Detections to search for overlap with.
+        overlap_threshold (float)
 
     Returns:
         merged (Result)
@@ -60,7 +61,8 @@ def filter_overlapping(filter_detections, detections):
             ious = mask_util.iou(
                 masks, filter_masks, pyiscrowd=np.zeros(len(filter_masks)))
             valid_indices = [
-                m for m in range(len(masks)) if np.all(ious[m, :] < 0.8)
+                m for m in range(len(masks))
+                if np.all(ious[m, :] < overlap_threshold)
             ]
         else:
             valid_indices = list(range(len(masks)))
@@ -145,6 +147,13 @@ def main():
               'contain pickle files of detections for each frame. These '
               'detections are used only to continue tracks.'),
         required=True)
+    parser.add_argument(
+        '--remove-continue-overlap',
+        type=float,
+        default=0.8,
+        help=('Remove detections from --continue-detections-dir if they '
+              'overlap more than this threshold with a detection from '
+              '--init-detections-dir.'))
     parser.add_argument(
         '--fbms-split-root',
         type=Path,
@@ -239,7 +248,8 @@ def main():
             continue_nonoverlapping = filter_overlapping(
                 filter_scores(detection,
                               tracking_params['score_continue_min']),
-                continue_file_detection)
+                continue_file_detection,
+                overlap_threshold=args.remove_continue_overlap)
             merged_detections[file] = merge_detections(
                 detection, continue_nonoverlapping)
         return merged_detections
