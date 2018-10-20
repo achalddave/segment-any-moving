@@ -48,6 +48,88 @@ def output_fbms_tracks(tracks, groundtruth_dir, output_file, progress=True):
         f.write(fbms_tracks_str)
 
 
+def track_fbms(fbms_split_root,
+               detections_loader,
+               output_dir,
+               tracking_params,
+               frame_extension,
+               save_video=False,
+               vis_dataset=None,
+               fps=None,
+               save_images=False,
+               filter_sequences=None):
+    """
+    Args:
+        fbms_split_root (Path)
+        detections_loader (callable): Returns detections for a sequence.
+        output_dir (Path)
+        tracking_params (dict)
+        frame_extension (str): Extension for frames in fbms_split_root
+        save_video (bool): Whether to visualize a video.
+        vis_dataset (str): Dataset to use for label names in visualization.
+            Ignored if save_video is False in visualization.
+        fps (int): Frames per second for output video.
+        filter_sequences (list)
+    """
+    sequences = sorted(s for s in fbms_split_root.iterdir() if s.is_dir())
+    if filter_sequences:
+        sequences = [s for s in sequences if s.name in filter_sequences]
+    all_shot_paths = []  # Paths for all_shots.txt
+    all_track_paths = []  # Paths for all_tracks.txt
+
+    for fbms_sequence_dir in tqdm(sequences):
+        sequence = fbms_sequence_dir.name
+        detection_results = detections_loader(sequence)
+        frames = sorted(
+            detection_results.keys(), key=fbms_utils.get_framenumber)
+        frame_paths = [
+            fbms_sequence_dir / (frame + frame_extension)
+            for frame in frames
+        ]
+        groundtruth_dir = fbms_sequence_dir / 'GroundTruth'
+
+        all_tracks = tracker.track(
+            frame_paths, [detection_results[frame] for frame in frames],
+            tracking_params, progress=False)
+
+        output_track = output_dir / (sequence + '.dat')
+        output_fbms_tracks(
+            all_tracks, groundtruth_dir, output_track, progress=False)
+
+        if save_video or save_images:
+            if save_video:
+                output_video = output_track.with_suffix('.mp4')
+            else:
+                output_video = None
+
+            if save_images:
+                images_dir = output_track.parent / output_track.stem
+                images_dir.mkdir(exist_ok=True, parents=True)
+            else:
+                images_dir = None
+
+            tracker.visualize_tracks(
+                all_tracks,
+                frame_paths,
+                vis_dataset,
+                tracking_params,
+                output_dir=images_dir,
+                output_video=output_video,
+                output_video_fps=fps,
+                progress=False)
+
+        all_shot_paths.append(
+            groundtruth_dir / (sequence + 'Def.dat'))
+        all_track_paths.append(output_track)
+
+    with open(output_dir / 'all_shots.txt', 'w') as f:
+        f.write(str(len(all_shot_paths)) + '\n')
+        f.write('\n'.join(str(x.resolve()) for x in all_shot_paths))
+
+    with open(output_dir / 'all_tracks.txt', 'w') as f:
+        f.write('\n'.join(str(x.resolve()) for x in all_track_paths))
+
+
 def main():
     tracking_parser = tracker.create_tracking_parser()
 
@@ -102,50 +184,14 @@ def main():
                 f"--detectron-dir contains a '{split}' subdirectory; it "
                 "should just contain a subdirectory for each sequence.")
 
-    sequences = [s for s in detectron_input.iterdir() if s.is_dir()]
-    all_shot_paths = []  # Paths for all_shots.txt
-    all_track_paths = []  # Paths for all_tracks.txt
+    def detections_loader(sequence):
+        return tracker.load_detectron_pickles(
+            detectron_input / sequence,
+            frame_parser=fbms_utils.get_framenumber)
 
-    for sequence_dir in tqdm(sequences):
-        detection_results = tracker.load_detectron_pickles(
-            sequence_dir, fbms_utils.get_framenumber)
-        frames = sorted(
-            detection_results.keys(), key=fbms_utils.get_framenumber)
-        frame_paths = [
-            args.fbms_split_root / sequence_dir.name / (frame + args.extension)
-            for frame in frames
-        ]
-        groundtruth_dir = (
-            args.fbms_split_root / sequence_dir.name / 'GroundTruth')
-
-        all_tracks = tracker.track(
-            frame_paths, [detection_results[frame] for frame in frames],
-            tracking_params, progress=False)
-
-        output_track = args.output_dir / (sequence_dir.name + '.dat')
-        output_fbms_tracks(
-            all_tracks, groundtruth_dir, output_track, progress=False)
-
-        if args.save_video:
-            tracker.visualize_tracks(
-                all_tracks,
-                frame_paths,
-                args.vis_dataset,
-                tracking_params,
-                output_video=output_track.with_suffix('.mp4'),
-                output_video_fps=args.fps,
-                progress=False)
-
-        all_shot_paths.append(
-            groundtruth_dir / (sequence_dir.name + 'Def.dat'))
-        all_track_paths.append(output_track)
-
-    with open(args.output_dir / 'all_shots.txt', 'w') as f:
-        f.write(str(len(all_shot_paths)) + '\n')
-        f.write('\n'.join(str(x.resolve()) for x in all_shot_paths))
-
-    with open(args.output_dir / 'all_tracks.txt', 'w') as f:
-        f.write('\n'.join(str(x.resolve()) for x in all_track_paths))
+    track_fbms(args.fbms_split_root, detections_loader, args.output_dir,
+               tracking_params, args.extension, args.save_video,
+               args.vis_dataset, args.fps)
 
 
 if __name__ == "__main__":
