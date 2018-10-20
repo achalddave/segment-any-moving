@@ -1,3 +1,6 @@
 [submodule "utils/fbms"]
 	path = utils/fbms
 	url = git@bitbucket.org:devalab/fbms.git
+[submodule "git-state"]
+	path = git-state
+	url = git@github.com:achalddave/git-state.git
