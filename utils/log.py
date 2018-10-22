@@ -6,7 +6,7 @@ from pathlib import Path
 def add_time_to_path(logging_filepath):
     logging_filepath = Path(logging_filepath)
     now = datetime.now().strftime('%b%d-%H-%M-%S')
-    return logging_filepath.with_name(logging_filepath.stem + now +
+    return logging_filepath.with_name(logging_filepath.stem + '_' + now +
                                       logging_filepath.suffix)
 
 
