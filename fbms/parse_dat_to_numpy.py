@@ -3,7 +3,7 @@ import logging
 import numpy as np
 from pathlib import Path
 
-from utils.fbms.utils import parse_tracks
+from utils.fbms.utils import FbmsGroundtruth, parse_tracks
 from utils.log import setup_logging
 
 
@@ -12,8 +12,13 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('dat_file')
-    parser.add_argument('output_numpy')
+    parser.add_argument('--dat-file', required=True)
+    parser.add_argument('--output-numpy', required=True,)
+    parser.add_argument(
+        '--groundtruth-dir',
+        type=Path,
+        required=True,
+        help='Groundtruth dir for this sequence, containing a .dat file.')
     parser.add_argument(
         '--label-size-space-separated',
         action='store_true',
@@ -26,22 +31,14 @@ def main():
     setup_logging(args.output_numpy + '.log')
     logging.info('Args:\n%s' % args)
 
+    groundtruth = FbmsGroundtruth(args.groundtruth_dir)
     with open(args.dat_file, 'r') as f:
-        tracks, num_frames = parse_tracks(
-            f.read(),
-            track_label_size_space_separated=args.label_size_space_separated)
+        tracks_txt = f.read()
 
-    width = max(p[0] for points in tracks.values() for p in points) + 1
-    height = max(p[1] for points in tracks.values() for p in points) + 1
-    logging.info('Inferred resolution: %sx%s' % (width, height))
-
-    segmentation = np.zeros((num_frames, height, width)) - 1
-    assert -1 not in tracks.keys()
-
-    for label, points in tracks.items():
-        for x, y, f in points:
-            segmentation[f, y, x] = label
-
+    segmentation = parse_tracks(
+        tracks_txt,
+        image_shape=(groundtruth.image_height, groundtruth.image_width),
+        track_label_size_space_separated=args.label_size_space_separated)
     np.save(args.output_numpy, segmentation)
 
 
