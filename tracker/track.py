@@ -429,8 +429,8 @@ def track(frame_paths,
     Args:
         frame_paths (list): List of paths to frames.
         frame_detections (list): List of detection results for each frame. Each
-            element is a dictionary containing keys 'boxes', 'masks',
-            and 'keypoints'.
+            element is a dictionary containing keys 'boxes', 'masks', and
+            'keypoints'.
         tracking_params (dict): See add_tracking_arguments() for details.
         label_list (list): List of label names.
         filter_label (str):
@@ -697,7 +697,8 @@ def add_tracking_arguments(root_parser, suppress_args=None):
         logging.warn('Unknown arguments in suppress_args: '
                      f'{suppressed-set(suppress_args)}')
 
-def load_detectron_pickles(detectron_input, get_framenumber):
+
+def load_detectron_pickles(detectron_input, frame_parser):
     """Load detectron pickle files from a directory.
 
     Returns:
@@ -711,7 +712,7 @@ def load_detectron_pickles(detectron_input, get_framenumber):
             continue
 
         try:
-            get_framenumber(x.stem)
+            frame_parser(x.stem)
         except ValueError:
             logging.fatal('Expected pickle files to be named <frame_id>.pickle'
                           ', found %s.' % x)
@@ -793,8 +794,8 @@ def main():
         raise ValueError(
             'Unknown --filename-format: %s' % args.filename_format)
 
-    detection_results = load_detectron_pickles(args.detectron_input,
-                                               get_framenumber)
+    detection_results = load_detectron_pickles(
+        args.detectron_input, frame_parser=get_framenumber)
     frames = sorted(detection_results.keys(), key=get_framenumber)
 
     should_visualize = (args.output_dir is not None
