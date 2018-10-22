@@ -587,7 +587,7 @@ def visualize_tracks(tracks,
         clip.write_videofile(str(output_video), verbose=progress)
 
 
-def create_tracking_parser():
+def create_tracking_parser(suppress_args=None):
     """Create a parser with tracking arguments.
 
     Usage:
@@ -605,36 +605,53 @@ def create_tracking_parser():
     argument is missing.
     """
     parent_parser = argparse.ArgumentParser(add_help=False)
-    add_tracking_arguments(parent_parser)
+    add_tracking_arguments(parent_parser, suppress_args)
     return parent_parser
 
 
-def add_tracking_arguments(root_parser):
-    """Add tracking params to an argument parser.  """
+def add_tracking_arguments(root_parser, suppress_args=None):
+    """Add tracking params to an argument parser.
+
+    Args:
+        suppress_args (list): List of arguments to suppress. This can be used
+            if the corresponding arguments will be populated by the calling
+            script.
+    """
     parser = root_parser.add_argument_group('Tracking params')
-    parser.add_argument(
+    if suppress_args is None:
+        suppress_args = []
+
+    suppressed = set()
+
+    def add_argument(argument, parser=parser, *args, **kwargs):
+        if argument in suppress_args:
+            suppressed.add(argument)
+            return
+        parser.add_argument(argument, *args, **kwargs)
+
+    add_argument(
         '--score-init-min',
         default=0.9,
         type=float,
         help='Detection confidence threshold for starting a new track')
-    parser.add_argument(
+    add_argument(
         '--score-continue-min',
         default=0.7,
         type=float,
         help=('Detection confidence threshold for adding a detection to '
               'existing track.'))
-    parser.add_argument(
+    add_argument(
         '--frames-skip-max',
         default=10,
         type=int,
         help='How many frames a track is allowed to miss detections in.')
-    parser.add_argument(
+    add_argument(
         '--spatial-dist-max',
         default=0.2,
         type=float,
         help=('Maximum distance between matched detections, as a fraction of '
               'the image diagonal.'))
-    parser.add_argument(
+    add_argument(
         '--area-ratio',
         default=0.5,
         type=float,
@@ -642,12 +659,12 @@ def add_tracking_arguments(root_parser):
               'To match two detections, the ratio between their areas must '
               'be between this threshold and 1/threshold. Setting this to '
               '0 disables checking of area ratios.'))
-    parser.add_argument(
+    add_argument(
         '--iou-min',
         default=0.1,
         type=float,
         help='Minimum IoU between matched detections.')
-    parser.add_argument(
+    add_argument(
         '--iou-gap-min',
         default=0,
         type=float,
@@ -656,25 +673,29 @@ def add_tracking_arguments(root_parser):
               'highest IoU has IoU > IoU of second highest IoU detection + '
               'gap, then the highest IoU detection is automatically assigned '
               'to the track.'))
-    parser.add_argument(
+    add_argument(
         '--ignore-labels',
         action='store_true',
         help=('Ignore labels when matching detections. By default, we only '
               'match detections if their labels match.'))
     # TODO(achald): Add help text.
-    parser.add_argument(
+    add_argument(
         '--appearance-feature',
         choices=['mask', 'histogram'],
         default='histogram')
     # TODO(achald): Add help text.
-    parser.add_argument('--appearance-gap', default=0, type=float)
+    add_argument('--appearance-gap', default=0, type=float)
 
-    parser = root_parser.add_argument_group('debug')
-    parser.add_argument(
+    debug_parser = root_parser.add_argument_group('debug')
+    add_argument(
         '--draw-spatial-threshold',
+        parser=debug_parser,
         action='store_true',
         help='Draw a diagnostic showing the spatial distance threshold')
 
+    if len(suppressed) != len(suppress_args):
+        logging.warn('Unknown arguments in suppress_args: '
+                     f'{suppressed-set(suppress_args)}')
 
 def load_detectron_pickles(detectron_input, get_framenumber):
     """Load detectron pickle files from a directory.
