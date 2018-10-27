@@ -183,10 +183,16 @@ class Detection():
 class Track():
     __next_id = 0
 
-    def __init__(self):
+    def __init__(self, friendly_id=None):
         self.detections = []
         self.velocity = None
         self.id = Track.__next_id
+        # Id used for user-facing things, like visualization or outputting to a
+        # text file. The id field can be very large if many tracks were created
+        # then destroyed, whereas the friendly id can start at 0 and be
+        # monotonically increasing and contiguous for only the tracks that are
+        # visualized.
+        self.friendly_id = friendly_id
         Track.__next_id += 1
 
     def add_detection(self, detection, timestamp):
@@ -456,13 +462,6 @@ def visualize_detections(image,
     if not detections:
         return image
     label_list = get_classes(dataset)
-    # Create monotonically increasing, contiguous list of track indices for
-    # visualizations.
-    track_indices = {
-        track_id: i
-        for i, track_id in enumerate(
-            sorted(set(x.track.id for x in detections)))
-    }
 
     # Display in largest to smallest order to reduce occlusion
     boxes = np.array([x.box for x in detections])
@@ -474,8 +473,10 @@ def visualize_detections(image,
     image = image.astype(dtype=np.uint8)
     for i in sorted_inds:
         detection = detections[i]
-        track_index = track_indices[detection.track.id]
-        color = [int(x) for x in colors[track_index % len(colors), :3]]
+        track_friendly_id = detection.track.friendly_id
+        if track_friendly_id is None:
+            __import__('ipdb').set_trace()
+        color = [int(x) for x in colors[track_friendly_id % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         cx, cy = detection.compute_center_box()
@@ -518,7 +519,7 @@ def visualize_detections(image,
             border_thick=3)
 
         label_str = '({track}) {label}: {score}'.format(
-            track=track_index,
+            track=track_friendly_id,
             label=label_list[detection.label],
             score='{:0.2f}'.format(detection.score).lstrip('0'))
         image = vis.vis_class(image, (x0, y0 - 2), label_str)
@@ -602,12 +603,13 @@ def track(frame_paths,
                 skipped_tracks.append(track)
 
         current_tracks = continued_tracks + skipped_tracks
+    for index, t in enumerate(all_tracks):
+        t.friendly_id = index
     return all_tracks
 
 
 def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
     filtered_tracks = []
-    track_indices = {track.id: i for i, track in enumerate(tracks)}
 
     for track in tracks:
         is_person = label_list[track.detections[-1].label] == 'person'
@@ -637,7 +639,7 @@ def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
             height = y1 - y0
             output_str += output_line_format.format(
                 frame=frame_numbers[timestamp],
-                track_id=track_indices[track.id],
+                track_id=track.friendly_id,
                 left=x0,
                 top=y0,
                 width=width,
