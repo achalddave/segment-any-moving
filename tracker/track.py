@@ -599,7 +599,16 @@ def visualize_tracks(tracks,
 
     if output_video is not None:
         clip = ImageSequenceClip(images, fps=output_video_fps)
-        clip.write_videofile(str(output_video), verbose=progress)
+        # Some videos don't play in Firefox and QuickTime if '-pix_fmt yuv420p'
+        # is not specified, and '-pix_fmt yuv420p' requires that the dimensions
+        # be even, so we need the '-vf scale=...' filter.
+        clip.write_videofile(
+            str(output_video),
+            verbose=progress,
+            ffmpeg_params=[
+                '-pix_fmt', 'yuv420p', '-vf',
+                'scale=trunc(iw/2)*2:trunc(ih/2)*2'
+            ])
 
 
 def create_tracking_parser(suppress_args=None):
