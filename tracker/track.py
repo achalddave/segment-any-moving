@@ -38,6 +38,8 @@ def decay_weighted_mean(values, sigma=5):
 
 
 class Detection():
+    __next_id = 0
+
     def __init__(self,
                  box,
                  score,
@@ -65,6 +67,8 @@ class Detection():
         self.mask = mask
         self.mask_feature = mask_feature
         self.track = None
+        self.id = Detection.__next_id
+        Detection.__next_id += 1
 
         self._cached_values = {
             'contour_moments': None,
@@ -177,10 +181,13 @@ class Detection():
 
 
 class Track():
-    def __init__(self, track_id):
+    __next_id = 0
+
+    def __init__(self):
         self.detections = []
-        self.id = track_id
         self.velocity = None
+        self.id = Track.__next_id
+        Track.__next_id += 1
 
     def add_detection(self, detection, timestamp):
         detection.track = self
@@ -358,6 +365,13 @@ def visualize_detections(image,
     if not detections:
         return image
     label_list = get_classes(dataset)
+    # Create monotonically increasing, contiguous list of track indices for
+    # visualizations.
+    track_indices = {
+        track_id: i
+        for i, track_id in enumerate(
+            sorted(set(x.track.id for x in detections)))
+    }
 
     # Display in largest to smallest order to reduce occlusion
     boxes = np.array([x.box for x in detections])
@@ -369,7 +383,8 @@ def visualize_detections(image,
     image = image.astype(dtype=np.uint8)
     for i in sorted_inds:
         detection = detections[i]
-        color = [int(x) for x in colors[detection.track.id % len(colors), :3]]
+        track_index = track_indices[detection.track.id]
+        color = [int(x) for x in colors[track_index % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         cx, cy = detection.compute_center_box()
@@ -412,7 +427,7 @@ def visualize_detections(image,
             border_thick=3)
 
         label_str = '({track}) {label}: {score}'.format(
-            track=detection.track.id,
+            track=track_index,
             label=label_list[detection.label],
             score='{:0.2f}'.format(detection.score).lstrip('0'))
         image = vis.vis_class(image, (x0, y0 - 2), label_str)
@@ -437,7 +452,6 @@ def track(frame_paths,
     """
     all_tracks = []
     current_tracks = []
-    track_id = 0
     progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
     for timestamp, (image_path, image_results) in enumerate(
             zip(frame_paths, frame_detections)):
@@ -478,9 +492,8 @@ def track(frame_paths,
         for detection, track in zip(detections, matched_tracks):
             if track is None:
                 if detection.score > tracking_params['score_init_min']:
-                    track = Track(track_id)
+                    track = Track()
                     all_tracks.append(track)
-                    track_id += 1
                 else:
                     continue
 
@@ -501,6 +514,8 @@ def track(frame_paths,
 
 def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
     filtered_tracks = []
+    track_indices = {track.id: i for i, track in enumerate(tracks)}
+
     for track in tracks:
         is_person = label_list[track.detections[-1].label] == 'person'
         is_long_enough = len(track.detections) > 4
@@ -529,7 +544,7 @@ def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
             height = y1 - y0
             output_str += output_line_format.format(
                 frame=frame_numbers[timestamp],
-                track_id=detection.track.id,
+                track_id=track_indices[track.id],
                 left=x0,
                 top=y0,
                 width=width,
