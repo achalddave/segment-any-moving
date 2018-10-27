@@ -180,6 +180,15 @@ class Detection():
         return (self._cached_values['mask_histogram'],
                 self._cached_values['mask_histogram_edges'])
 
+    def __str__(self):
+        output = (
+            '{'
+            f't: {self.timestamp}, box: {self.box}, score: {self.score}, '
+            f'label: {self.label}, id: {self.label}')
+        if self.track is not None:
+            output += f', track: {self.track}'
+        return output + '}'
+
 
 class Track():
     __next_id = 0
@@ -205,6 +214,16 @@ class Track():
             return self.detections[-1].timestamp
         else:
             return None
+
+    def __str__(self):
+        output = f'{{id: {self.id}'
+        if self.friendly_id:
+            output += f', friendly_id: {self.friendly_id}'
+        if self.detections:
+            output += ', time range: ({start}, {end})'.format(
+                start=self.detections[0].timestamp,
+                end=self.detections[-1].timestamp)
+        return output + '}'
 
 
 def track_distance(track, detection):
