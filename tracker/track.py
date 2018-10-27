@@ -13,6 +13,7 @@ import numpy as np
 import PIL
 import pycocotools.mask as mask_util
 import skimage.color
+import scipy.optimize
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
 from scipy.spatial.distance import cosine
@@ -280,40 +281,22 @@ def filter_spatial_distance(tracks, candidates, max_distance):
     }
 
 
-def filter_ious(tracks, candidates, iou_min):
-    """Filter candidate detections by IoU.
-
+def compute_ious(tracks, candidates):
+    """
     Returns:
-        new_candidates (dict)
         ious (dict): Map track.id to list of ious for each candidate detection
             in new_candidates.
     """
-    new_candidates = {}
     ious = {}
 
     for track in tracks:
         if not candidates[track.id]:
             continue
-        track_ious = [
+        ious[track.id] = [
             track.detections[-1].mask_iou(detection)
             for detection in candidates[track.id]
         ]
-        # best_index, best_iou = sorted_ious[0]
-        # second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
-        # if (best_iou - second_best_iou) > iou_gap_min:
-        #     best_detection = candidates[track.id][best_index]
-        #     if best_detection.id not in matched_detection_ids:
-        #         matched_detection_ids.add(best_detection.id)
-        #         new_candidates[track.id] = [best_detection]
-        #         continue
-
-        new_candidates[track.id] = []
-        ious[track.id] = []
-        for d, iou in enumerate(track_ious):
-            if iou >= iou_min:
-                new_candidates[track.id].append(candidates[track.id][d])
-                ious[track.id].append(iou)
-    return new_candidates, ious
+    return ious
 
 
 def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
@@ -351,23 +334,6 @@ def _match_detections_single_timestep(tracks, detections, tracking_params):
     tracks = sorted(tracks, key=lambda t: t.detections[-1].score, reverse=True)
     candidates = {track.id: list(detections) for track in tracks}
 
-    matched_tracks = {detection.id: None for detection in detections}
-
-    def filter_matched(candidates):
-        new_candidates = {}
-        matched_track_ids = set(
-            x.id for x in matched_tracks.values() if x is not None)
-        for track_id, candidate_detections in candidates.items():
-            # Filter this track if it was matched
-            if track_id in matched_track_ids:
-                continue
-
-            # Filter matched detections from the candidates for this track.
-            new_candidates[track_id] = [
-                d for d in candidate_detections if matched_tracks[d.id] is None
-            ]
-        return new_candidates
-
     # Keep candidates with similar areas only.
     if tracking_params['area_ratio'] > 0:
         candidates = filter_areas(tracks, candidates,
@@ -377,22 +343,39 @@ def _match_detections_single_timestep(tracks, detections, tracking_params):
         candidates = filter_spatial_distance(
             tracks, candidates, tracking_params['spatial_dist_max'])
 
-    candidates, ious = filter_ious(tracks, candidates,
-                                   tracking_params['iou_min'])
-    # Assign tracks where the best detection has IoU > second best detection +
-    # 'iou_gap_min'.
+    # Maps track ids to iou for each track candidate
+    ious = compute_ious(tracks, candidates)
+
+    # If we're not using the appearance, just use Hungarian method to assing
+    # tracks and detections.
+    if tracking_params['appearance_feature'] == 'none':
+        ious_matrix = np.zeros((len(tracks), len(detections)))
+        detection_indices = {d.id: index for index, d in enumerate(detections)}
+
+        matched_tracks = {detection.id: None for detection in detections}
+        for t, track in enumerate(tracks):
+            if track.id not in ious:
+                continue
+            for detection, iou in zip(candidates[track.id], ious[track.id]):
+                d = detection_indices[detection.id]
+                ious_matrix[t, d] = iou
+        # Tuple of (track indices, detection indices)
+        assignments = scipy.optimize.linear_sum_assignment(-ious_matrix)
+        for t, d in zip(assignments[0].tolist(), assignments[1].tolist()):
+            if ious_matrix[t, d] > tracking_params['iou_min']:
+                matched_tracks[detections[d].id] = tracks[t]
+        return matched_tracks
+
     for track in tracks:
-        if track.id not in candidates or not ious[track.id]:
+        if track.id not in candidates:
             continue
-        sorted_ious = sorted(enumerate(ious[track.id]), reverse=True)
-        best_index, best_iou = sorted_ious[0]
-        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
-        if (best_iou - second_best_iou) > tracking_params['iou_gap_min']:
-            best_detection = candidates[track.id][best_index]
-            if matched_tracks[best_detection.id] is None:
-                matched_tracks[best_detection.id] = track
-                del candidates[track.id]
-    candidates = filter_matched(candidates)
+        if track.id not in ious:
+            candidates[track.id] = []
+            continue
+        candidates[track.id] = [
+            d for d, iou in zip(candidates[track.id], ious[track.id])
+            if iou > tracking_params['iou_min']
+        ]
 
     # Stage 3: Match tracks to detections with good appearance threshold.
     if tracking_params['appearance_feature'] != 'none':
@@ -400,18 +383,19 @@ def _match_detections_single_timestep(tracks, detections, tracking_params):
                                        tracking_params['appearance_feature'],
                                        tracking_params['appearance_gap'])
 
-    # Loop over detections in descending order of scores; if the detection
-    # is the only candidate for any track, assign it to that track.
-    for detection in detections:
-        for track in tracks:
-            if track.id not in candidates:
-                continue
-            track_candidates = candidates[track.id]
-            if ((len(track_candidates) == 1)
-                    and (track_candidates[0].id == detection.id)):
-                matched_tracks[detection.id] = track
-                del candidates[track.id]
-    return matched_tracks
+        # Loop over detections in descending order of scores; if the detection
+        # is the only candidate for any track, assign it to that track.
+        matched_tracks = {detection.id: None for detection in detections}
+        for detection in detections:
+            for track in tracks:
+                if track.id not in candidates:
+                    continue
+                track_candidates = candidates[track.id]
+                if ((len(track_candidates) == 1)
+                        and (track_candidates[0].id == detection.id)):
+                    matched_tracks[detection.id] = track
+                    del candidates[track.id]
+        return matched_tracks
 
 
 def match_detections(tracks, detections, tracking_params):
@@ -785,15 +769,6 @@ def add_tracking_arguments(root_parser, suppress_args=None):
         type=float,
         help='Minimum IoU between matched detections.')
     add_argument(
-        '--iou-gap-min',
-        default=0,
-        type=float,
-        help=('Minimum gap between the best IoU and the second best IoU of '
-              'detections to a track. For each track, if the detection with '
-              'highest IoU has IoU > IoU of second highest IoU detection + '
-              'gap, then the highest IoU detection is automatically assigned '
-              'to the track.'))
-    add_argument(
         '--ignore-labels',
         action='store_true',
         help=('Ignore labels when matching detections. By default, we only '
@@ -803,8 +778,12 @@ def add_tracking_arguments(root_parser, suppress_args=None):
     add_argument(
         '--appearance-feature',
         choices=['mask', 'histogram', 'none'],
-        default='none')
-    # TODO(achald): Add help text.
+        default='none',
+        help=('Appearance feature for final comparisons between detections. '
+              'This is only used if multiple detections have > --iou-min IoU '
+              'with a track. By default, appearance features are not used and '
+              'the Hungarian algorithm is used to make assignments based on '
+              'IoU.'))
     add_argument('--appearance-gap', default=0, type=float)
 
     debug_parser = root_parser.add_argument_group('debug')
