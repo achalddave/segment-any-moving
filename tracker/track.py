@@ -230,89 +230,181 @@ def track_distance(track, detection):
     return (diff_norm / diagonal)
 
 
-def _match_detections_single_timestep(tracks, detections, tracking_params):
-    matched_tracks = [None for _ in detections]
+def filter_areas(tracks, candidates, area_ratio):
+    """
+    Args:
+        tracks (list): List of Tracks
+        candidates (dict): Map track id to list of Detections.
 
-    sorted_indices = sorted(
-        range(len(detections)),
-        key=lambda index: detections[index].score,
-        reverse=True)
-
-    candidates = {track.id: sorted_indices.copy() for track in tracks}
-
-    # Stage 1: Keep candidates with similar areas only.
+    Returns:
+        candidates (dict): Map track id to list of Detections.
+    """
+    new_candidates = {}
     for track in tracks:
         track_area = track.detections[-1].compute_area()
+        new_candidates[track.id] = []
         if track_area == 0:
-            candidates[track.id] = 0
             continue
-        new_candidates = []
-        for i in candidates[track.id]:
-            d = detections[i]
+        for d in candidates[track.id]:
             area = d.compute_area()
             if (area > 0
-                    and (area / track_area) > tracking_params['area_ratio']
-                    and (track_area / area) > tracking_params['area_ratio']):
-                new_candidates.append(i)
-        candidates[track.id] = new_candidates
+                    and ((1 / area_ratio) > (area / track_area) > area_ratio)):
+                new_candidates[track.id].append(d)
+    return new_candidates
 
-    # Stage 2: Match tracks to detections with good mask IOU.
+
+def filter_labels(tracks, candidates):
+    """Filter candidates with different labels."""
+    new_candidates = {}
     for track in tracks:
-        track_ious = {}
-        track_detection = track.detections[-1]
-        for i in candidates[track.id]:
-            already_matched = matched_tracks[i] is not None
-            if tracking_params['ignore_labels']:
-                different_label = False
-            else:
-                different_label = track_detection.label != detections[i].label
-            too_far = (track_distance(track, detections[i]) >
-                       tracking_params['spatial_dist_max'])
-            if already_matched or different_label or too_far:
-                continue
-            track_ious[i] = track_detection.mask_iou(detections[i])
-        if not track_ious:
-            candidates[track.id] = []
-
-        sorted_ious = sorted(
-            track_ious.items(), key=lambda x: x[1], reverse=True)
-        best_index, best_iou = sorted_ious[0]
-        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
-        if (best_iou - second_best_iou) > tracking_params['iou_gap_min']:
-            matched_tracks[best_index] = track
-            candidates[track.id] = []
-        else:
-            candidates[track.id] = [
-                d for d, iou in sorted_ious
-                if iou >= tracking_params['iou_min']
-            ]
-
-    # Stage 3: Match tracks to detections with good appearance threshold.
-    for track in tracks:
-        candidates[track.id] = [
-            i for i in candidates[track.id] if matched_tracks[i] is None
+        track_label = track.detections[-1].label
+        new_candidates[track.id] = [
+            d for d in candidates[track.id] if d.label == track_label
         ]
+    return new_candidates
+
+
+def filter_spatial_distance(tracks, candidates, max_distance):
+    return {
+        track.id: [
+            detection for detection in candidates[track.id]
+            if track_distance(track, detection) < max_distance
+        ]
+        for track in tracks
+    }
+
+
+def filter_ious(tracks, candidates, iou_min):
+    """Filter candidate detections by IoU.
+
+    Returns:
+        new_candidates (dict)
+        ious (dict): Map track.id to list of ious for each candidate detection
+            in new_candidates.
+    """
+    new_candidates = {}
+    ious = {}
+
+    for track in tracks:
+        if not candidates[track.id]:
+            continue
+        track_ious = [
+            track.detections[-1].mask_iou(detection)
+            for detection in candidates[track.id]
+        ]
+        # best_index, best_iou = sorted_ious[0]
+        # second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
+        # if (best_iou - second_best_iou) > iou_gap_min:
+        #     best_detection = candidates[track.id][best_index]
+        #     if best_detection.id not in matched_detection_ids:
+        #         matched_detection_ids.add(best_detection.id)
+        #         new_candidates[track.id] = [best_detection]
+        #         continue
+
+        new_candidates[track.id] = []
+        ious[track.id] = []
+        for d, iou in enumerate(track_ious):
+            if iou >= iou_min:
+                new_candidates[track.id].append(candidates[track.id][d])
+                ious[track.id].append(iou)
+    return new_candidates, ious
+
+
+def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
+    new_candidates = {}
+    for track in tracks:
         if not candidates[track.id]:
             continue
         appearance_distances = {}
         track_detection = track.detections[-1]
-        for i in candidates[track.id]:
-            if tracking_params['appearance_feature'] == 'mask':
-                appearance_distances[i] = cosine(track_detection.mask_feature,
-                                                 detections[i].mask_feature)
-            elif tracking_params['appearance_feature'] == 'histogram':
+        for i, detection in enumerate(candidates[track.id]):
+            if appearance_feature == 'mask':
+                appearance_distances[i] = cosine(
+                    track_detection.mask_feature,
+                    detection.mask_feature)
+            elif appearance_feature == 'histogram':
                 appearance_distances[i] = chi_square_distance(
                         track_detection.compute_histogram()[0],
-                        detections[i].compute_histogram()[0])
+                        detection.compute_histogram()[0])
+
         sorted_distances = sorted(
             appearance_distances.items(), key=lambda x: x[1])
         best_match, best_distance = sorted_distances[0]
-        second_best_distance = (sorted_distances[1][1] if
-                                len(sorted_distances) > 1 else np.float('inf'))
-        if ((second_best_distance - best_distance) >
-                tracking_params['appearance_gap']):
-            matched_tracks[best_match] = track
-            candidates[track.id] = []
+        second_best_distance = (sorted_distances[1][1]
+                                if len(sorted_distances) > 1 else
+                                np.float('inf'))
+        if ((second_best_distance - best_distance) > appearance_gap):
+            new_candidates[track.id] = [candidates[track.id][best_match]]
+        else:
+            new_candidates[track.id] = candidates[track.id]
+    return new_candidates
+
+
+def _match_detections_single_timestep(tracks, detections, tracking_params):
+    detections = sorted(detections, key=lambda d: d.score, reverse=True)
+    tracks = sorted(tracks, key=lambda t: t.detections[-1].score, reverse=True)
+    candidates = {track.id: list(detections) for track in tracks}
+
+    matched_tracks = {detection.id: None for detection in detections}
+
+    def filter_matched(candidates):
+        new_candidates = {}
+        matched_track_ids = set(
+            x.id for x in matched_tracks.values() if x is not None)
+        for track_id, candidate_detections in candidates.items():
+            # Filter this track if it was matched
+            if track_id in matched_track_ids:
+                continue
+
+            # Filter matched detections from the candidates for this track.
+            new_candidates[track_id] = [
+                d for d in candidate_detections if matched_tracks[d.id] is None
+            ]
+        return new_candidates
+
+    # Keep candidates with similar areas only.
+    if tracking_params['area_ratio'] > 0:
+        candidates = filter_areas(tracks, candidates,
+                                  tracking_params['area_ratio'])
+
+    if tracking_params['spatial_dist_max'] > 0:
+        candidates = filter_spatial_distance(
+            tracks, candidates, tracking_params['spatial_dist_max'])
+
+    candidates, ious = filter_ious(tracks, candidates,
+                                   tracking_params['iou_min'])
+    # Assign tracks where the best detection has IoU > second best detection +
+    # 'iou_gap_min'.
+    for track in tracks:
+        if track.id not in candidates or not ious[track.id]:
+            continue
+        sorted_ious = sorted(enumerate(ious[track.id]), reverse=True)
+        best_index, best_iou = sorted_ious[0]
+        second_best_iou = sorted_ious[1][1] if len(sorted_ious) > 1 else 0
+        if (best_iou - second_best_iou) > tracking_params['iou_gap_min']:
+            best_detection = candidates[track.id][best_index]
+            if matched_tracks[best_detection.id] is None:
+                matched_tracks[best_detection.id] = track
+                del candidates[track.id]
+    candidates = filter_matched(candidates)
+
+    # Stage 3: Match tracks to detections with good appearance threshold.
+    if tracking_params['appearance_feature'] != 'none':
+        candidates = filter_appearance(tracks, candidates,
+                                       tracking_params['appearance_feature'],
+                                       tracking_params['appearance_gap'])
+
+    # Loop over detections in descending order of scores; if the detection
+    # is the only candidate for any track, assign it to that track.
+    for detection in detections:
+        for track in tracks:
+            if track.id not in candidates:
+                continue
+            track_candidates = candidates[track.id]
+            if ((len(track_candidates) == 1)
+                    and (track_candidates[0].id == detection.id)):
+                matched_tracks[detection.id] = track
+                del candidates[track.id]
     return matched_tracks
 
 
@@ -324,9 +416,7 @@ def match_detections(tracks, detections, tracking_params):
         detections (list): List of Detection objects for the current frame.
 
     Returns:
-        matched_tracks (list): List of Track objects or None, of length
-            len(detection), containing the Track, if any, that each Detection
-            is assigned to.
+        matched_tracks (dict): Map detection id to matching Track, or None.
     """
     # Tracks sorted by most recent to oldest.
     tracks_by_timestamp = collections.defaultdict(list)
@@ -334,24 +424,25 @@ def match_detections(tracks, detections, tracking_params):
         tracks_by_timestamp[track.last_timestamp()].append(track)
 
     timestamps = sorted(tracks_by_timestamp.keys(), reverse=True)
-    matched_tracks = [None for _ in detections]
+
+    matched_tracks = {d.id: None for d in detections}
 
     # Match detections to the most recent tracks first.
-    unmatched_detection_indices = list(range(len(detections)))
+    unmatched_detections = detections
+    detections_by_id = {d.id: d for d in detections}
     for timestamp in timestamps:
         single_timestamp_matched_tracks = _match_detections_single_timestep(
             tracks_by_timestamp[timestamp],
-            [detections[i] for i in unmatched_detection_indices],
+            unmatched_detections,
             tracking_params)
-        new_unmatched_indices = []
-        for i, track in enumerate(single_timestamp_matched_tracks):
-            detection_index = unmatched_detection_indices[i]
+        new_unmatched_detections = []
+        for detection_id, track in single_timestamp_matched_tracks.items():
             if track is not None:
-                assert matched_tracks[detection_index] is None
-                matched_tracks[detection_index] = track
+                assert matched_tracks[detection_id] is None
+                matched_tracks[detection_id] = track
             else:
-                new_unmatched_indices.append(detection_index)
-        unmatched_detection_indices = new_unmatched_indices
+                new_unmatched_detections.append(detections_by_id[detection_id])
+        unmatched_detections = new_unmatched_detections
 
     return matched_tracks
 
@@ -488,8 +579,10 @@ def track(frame_paths,
         matched_tracks = match_detections(current_tracks, detections,
                                           tracking_params)
 
+        # Tracks that were assigned a detection in this frame.
         continued_tracks = []
-        for detection, track in zip(detections, matched_tracks):
+        for detection in detections:
+            track = matched_tracks[detection.id]
             if track is None:
                 if detection.score > tracking_params['score_init_min']:
                     track = Track()
@@ -671,18 +764,19 @@ def add_tracking_arguments(root_parser, suppress_args=None):
         help='How many frames a track is allowed to miss detections in.')
     add_argument(
         '--spatial-dist-max',
-        default=0.2,
+        default=-1,
         type=float,
         help=('Maximum distance between matched detections, as a fraction of '
-              'the image diagonal.'))
+              'the image diagonal. Set to a negative value to disable '
+              '(disabled by default).'))
     add_argument(
         '--area-ratio',
-        default=0.5,
+        default=0,
         type=float,
         help=('Specifies threshold for area ratio between matched detections. '
               'To match two detections, the ratio between their areas must '
-              'be between this threshold and 1/threshold. Setting this to '
-              '0 disables checking of area ratios.'))
+              'be between this threshold and 1/threshold. By default this is '
+              'set to 0, which disables checking area ratios.'))
     add_argument(
         '--iou-min',
         default=0.1,
@@ -702,11 +796,12 @@ def add_tracking_arguments(root_parser, suppress_args=None):
         action='store_true',
         help=('Ignore labels when matching detections. By default, we only '
               'match detections if their labels match.'))
+
     # TODO(achald): Add help text.
     add_argument(
         '--appearance-feature',
-        choices=['mask', 'histogram'],
-        default='histogram')
+        choices=['mask', 'histogram', 'none'],
+        default='none')
     # TODO(achald): Add help text.
     add_argument('--appearance-gap', default=0, type=float)
 
