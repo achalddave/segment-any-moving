@@ -265,7 +265,7 @@ def _match_detections_single_timestep(tracks, detections, tracking_params):
                 continue
             track_ious[i] = track_detection.mask_iou(detections[i])
         if not track_ious:
-            continue
+            candidates[track.id] = []
 
         sorted_ious = sorted(
             track_ious.items(), key=lambda x: x[1], reverse=True)
