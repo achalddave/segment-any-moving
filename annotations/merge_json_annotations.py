@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-from get_videos import _set_logging
+from utils.log import setup_logging
 
 
 def main():
@@ -21,7 +21,7 @@ def main():
     output_json = Path(args.output_json)
     output_json.parent.mkdir(exist_ok=True, parents=True)
     logging_path = str(output_json.with_suffix('.log'))
-    _set_logging(logging_path)
+    setup_logging(logging_path)
     file_logger = logging.getLogger(logging_path)
     logging.info('Args: %s' % vars(args))
 
