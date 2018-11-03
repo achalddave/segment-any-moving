@@ -7,7 +7,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from utils.log import setup_logging
+import utils.log as log_utils
 
 
 def main():
@@ -39,11 +39,12 @@ def main():
     binary = args.eval_binary
     predictions_dir = Path(args.predictions_dir)
 
-    logging_path = str(predictions_dir / (Path(__file__).name + '.log'))
-    setup_logging(logging_path)
+    logging_path = log_utils.add_time_to_path(
+        predictions_dir / (Path(__file__).name + '.log'))
+    log_utils.setup_logging(logging_path)
     logging.info('Args:\n%s', vars(args))
 
-    file_logger = logging.getLogger(logging_path)
+    file_logger = logging.getLogger(str(logging_path))
 
     shots_file = predictions_dir / 'all_shots.txt'
     tracks_file = predictions_dir / 'all_tracks.txt'
