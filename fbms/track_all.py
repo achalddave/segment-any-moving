@@ -161,6 +161,7 @@ def main():
         default='objectness',
         choices=['coco', 'objectness'],
         help='Dataset to use for mapping label indices to names.')
+    parser.add_argument('--filter-sequences', default=[], nargs='*', type=str)
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -194,9 +195,19 @@ def main():
             detectron_input / sequence,
             frame_parser=fbms_utils.get_framenumber)
 
-    track_fbms(args.fbms_split_root, detections_loader, args.output_dir,
-               tracking_params, args.extension, args.save_video,
-               args.vis_dataset, args.fps)
+    if not args.filter_sequences:
+        args.filter_sequences = None
+
+    track_fbms(
+        args.fbms_split_root,
+        detections_loader,
+        args.output_dir,
+        tracking_params,
+        args.extension,
+        args.save_video,
+        args.vis_dataset,
+        args.fps,
+        filter_sequences=args.filter_sequences)
 
 
 if __name__ == "__main__":
