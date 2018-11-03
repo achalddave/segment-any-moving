@@ -854,7 +854,7 @@ def main():
     parser.add_argument('--images-dir', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path)
     parser.add_argument('--output-video', type=Path)
-    parser.add_argument('--output-video-fps', default=10, type=float)
+    parser.add_argument('--output-video-fps', default=30, type=float)
     parser.add_argument(
         '--output-track-file',
         type=Path,
