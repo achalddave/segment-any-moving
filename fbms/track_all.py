@@ -2,6 +2,7 @@ import argparse
 import collections
 import logging
 import pprint
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -172,6 +173,10 @@ def main():
     log_utils.setup_logging(output_log_file)
     logging.info('Args: %s', pprint.pformat(vars(args)))
     logging.info('Tracking params: %s', pprint.pformat(tracking_params))
+    subprocess.call([
+        './git-state/save_git_state.sh',
+        output_log_file.with_suffix('.git-state')
+    ])
 
     detectron_input = args.detections_dir
     if not detectron_input.is_dir():
