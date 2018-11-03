@@ -834,8 +834,7 @@ def load_detectron_pickles(detectron_input, frame_parser):
         try:
             frame_parser(x.stem)
         except ValueError:
-            logging.fatal('Expected pickle files to be named <frame_id>.pickle'
-                          ', found %s.' % x)
+            logging.fatal('Unexpected pickle file name: %s', x)
             raise
 
         with open(x, 'rb') as f:
