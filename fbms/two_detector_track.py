@@ -197,7 +197,7 @@ def main():
 
     subprocess.call([
         './git-state/save_git_state.sh',
-        log_utils.add_time_to_path(args.output_dir / 'git-state')
+        output_log_file.with_suffix('.git-state')
     ])
 
     # We want to use init_detections with score > s_i to init tracks, and
