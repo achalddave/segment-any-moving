@@ -153,6 +153,7 @@ def main():
               'which contains a ".dat" file of groundtruth. E.g. '
               '<FBMS_ROOT>/TestSet'))
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--save-images', action='store_true')
     parser.add_argument('--save-video', action='store_true')
     parser.add_argument('--fps', type=int, default=30)
     parser.add_argument('--extension', default='.jpg')
@@ -207,6 +208,7 @@ def main():
         args.save_video,
         args.vis_dataset,
         args.fps,
+        save_images=args.save_images,
         filter_sequences=args.filter_sequences)
 
 
