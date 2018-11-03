@@ -6,6 +6,7 @@ detects static and moving objects) for continuing tracks."""
 
 import argparse
 import logging
+import pickle
 import pprint
 import subprocess
 from pathlib import Path
@@ -182,6 +183,7 @@ def main():
         help='Dataset to use for mapping label indices to names.')
     parser.add_argument('--save-images', action='store_true')
     parser.add_argument('--filter-sequences', default=[], nargs='*', type=str)
+    parser.add_argument('--save-merged-detections', action='store_true')
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -199,6 +201,10 @@ def main():
         './git-state/save_git_state.sh',
         output_log_file.with_suffix('.git-state')
     ])
+    if args.save_merged_detections:
+        output_merged = args.output_dir / 'merged'
+        assert not output_merged.exists()
+        output_merged.mkdir()
 
     # We want to use init_detections with score > s_i to init tracks, and
     # (init_detections or continue_detections with score > s_c) to continue
@@ -229,6 +235,9 @@ def main():
             args.continue_detections_dir / sequence,
             fbms_utils.get_framenumber)
 
+        if args.save_merged_detections:
+            output_merged_sequence = output_merged / sequence
+            output_merged_sequence.mkdir()
         merged_detections = {}
         for file, detection in init_detections.items():
             boxes = detection['boxes']
@@ -249,6 +258,10 @@ def main():
                 overlap_threshold=args.remove_continue_overlap)
             merged_detections[file] = merge_detections(
                 detection, continue_nonoverlapping)
+            if args.save_merged_detections:
+                with open(output_merged_sequence / (file + '.pickle'),
+                          'wb') as f:
+                    pickle.dump(merged_detections[file], f)
         return merged_detections
 
     if not args.filter_sequences:
