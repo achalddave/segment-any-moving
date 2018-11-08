@@ -24,7 +24,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     output_log_file = log_utils.add_time_to_path(
-        args.masks_dir / 'evaluation.log')
+        args.masks_dir / (Path(__file__).name + '.log'))
     log_utils.setup_logging(output_log_file)
 
     for split in ['TrainingSet', 'TestSet']:
