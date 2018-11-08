@@ -20,6 +20,8 @@ def create_masks_sequence(predictions_dir, output_dir, threshold, mask_shape,
                           duplicate_last_frame):
     pickle_files = sorted(
         predictions_dir.glob('*.pickle'), key=lambda x: int(x.stem))
+    if not pickle_files:
+        logging.warn("Found no pickle files in %s; ignoring.", predictions_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     for frame_number, pickle_file in enumerate(pickle_files):
         filename = pickle_file.stem
@@ -98,10 +100,14 @@ def main():
     all_sequence_predictions = [
         x for x in args.detections_root.iterdir() if x.is_dir()
     ]
+    # The DAVIS 2016 evaluation code really doesn't like any other files /
+    # directories in the input directory, so we put the masks in a subdirectory
+    # without the log file.
+    masks_output_dir = args.output_dir / 'masks'
     for sequence_predictions in tqdm(all_sequence_predictions):
         create_masks_sequence(
             sequence_predictions,
-            args.output_dir / sequence_predictions.name,
+            masks_output_dir / sequence_predictions.name,
             args.threshold,
             mask_shape=(args.output_height, args.output_width),
             duplicate_last_frame=args.duplicate_last_frame)
