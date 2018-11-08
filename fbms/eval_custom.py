@@ -44,6 +44,21 @@ def compute_f_measure(precision, recall):
     return 2 * precision * recall / (max(precision + recall, 1e-10))
 
 
+def simple_table(rows):
+    lengths = [
+        max(len(row[i]) for row in rows) + 1 for i in range(len(rows[0]))
+    ]
+    row_format = ' '.join(('{:<%s}' % length) for length in lengths[:-1])
+    row_format += ' %s'  # The last column can maintain its length.
+
+    output = ''
+    for i, row in enumerate(rows):
+        if i > 0:
+            output += '\n'
+        output += row_format.format(*row)
+    return output
+
+
 def main():
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
@@ -82,7 +97,9 @@ def main():
             Path(__file__).name + '_with-unknown.log')
     else:
         log_path = args.predictions_dir / (Path(__file__).name + '.log')
-    log_utils.setup_logging(log_utils.add_time_to_path(log_path))
+    log_path = log_utils.add_time_to_path(log_path)
+    log_utils.setup_logging(log_path)
+    file_logger = logging.getLogger(str(log_path))
 
     subprocess.call([
         './git-state/save_git_state.sh',
@@ -98,6 +115,10 @@ def main():
 
     prediction_paths = sorted(x for x in args.predictions_dir.iterdir()
                               if x.name.endswith(args.npy_extension))
+    if not prediction_paths:
+        raise ValueError(
+            'Found no numpy files (ending in "%s") in --predictions-dir.' %
+            args.npy_extension)
 
     groundtruth_paths = [
         args.groundtruth_dir / x.stem / 'GroundTruth'
@@ -105,7 +126,7 @@ def main():
     ]
 
     # Maps track_id to list of (x, y, t) tuples.
-    sequence_metrics = []  # List of (precision, recall, f-measure)
+    sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
     for groundtruth_path, prediction_path in zip(
             tqdm(groundtruth_paths), prediction_paths):
         groundtruth_info = fbms_utils.FbmsGroundtruth(groundtruth_path)
@@ -181,14 +202,25 @@ def main():
 
         precision = 100 * num_correct / num_predicted
         recall = 100 * num_correct / num_groundtruth
-        sequence_metrics.append((precision, recall,
-                                 compute_f_measure(precision, recall)))
+        f_measure = compute_f_measure(precision, recall)
+        sequence_metrics.append((groundtruth_path.parent.stem, precision,
+                                 recall, f_measure))
+
+    file_logger.info('Per sequence metrics:')
+    formatted_metrics = [
+        [metrics[0]] + ['{:.2f}'.format(m) for m in metrics[1:]]
+        for metrics in sequence_metrics
+    ]
+    file_logger.info(
+        '\n%s' % simple_table([('Sequence', 'Precision', 'Recall',
+                                'F-measure')] + formatted_metrics))
+
     logging.info('Average precision: %.2f',
-          np.mean([m[0] for m in sequence_metrics]))
+                 np.mean([m[1] for m in sequence_metrics]))
     logging.info('Average recall: %.2f',
-          np.mean([m[1] for m in sequence_metrics]))
+                 np.mean([m[2] for m in sequence_metrics]))
     logging.info('Average f-measure: %.2f',
-          np.mean([m[2] for m in sequence_metrics]))
+                 np.mean([m[3] for m in sequence_metrics]))
 
 
 if __name__ == "__main__":
