@@ -1,7 +1,9 @@
 """Convert .flo files to .png files with angle/magnitude channels."""
 
 import argparse
+import collections
 import logging
+import subprocess
 from pathlib import Path
 
 import cv2.optflow
@@ -13,7 +15,31 @@ from tqdm import tqdm
 from utils.log import setup_logging
 
 
-def convert_flo(input_flo_path, output_image, output_metadata):
+def convert_flo_pavel_matlab(flo_dir, output_dir):
+    pavel_code_dir = Path(__file__).parent / 'pavel_flow'
+    command = [
+        'matlab', '-r',
+        "decodeFlowNet('%s', '%s'); quit" % (flo_dir.resolve(),
+                                             output_dir.resolve())
+    ]
+    subprocess.check_output(command, cwd=pavel_code_dir)
+
+
+def convert_flo(input_flo_path,
+                output_image=None,
+                metadata_suffix='_magnitude_minmax.txt',
+                overwrite_existing=False):
+    if not isinstance(input_flo_path, Path):
+        input_flo_path = Path(input_flo_path)
+
+    if output_image is None:
+        output_image = input_flo_path.with_suffix('.png')
+    output_metadata = output_image.with_name(output_image.stem +
+                                             metadata_suffix)
+    if not overwrite_existing and (output_image.exists()
+                                   and output_metadata.exists()):
+        return
+
     flow = cv2.optflow.readOpticalFlow(str(input_flo_path))
     flow_x, flow_y = flow[:, :, 0], flow[:, :, 1]
     magnitude = np.sqrt(flow_x**2 + flow_y**2)
@@ -62,6 +88,10 @@ def main():
         help='Directory to output angle/magnitude png files to.',
         required=True)
     parser.add_argument(
+        '--pavel-matlab-conversion',
+        action='store_true',
+        help="Use Pavel Tokmakov's MATLAB code for converting .flo to .png")
+    parser.add_argument(
         '--recursive',
         action='store_true',
         help='Look recursively in --input-dir for flo files.')
@@ -81,18 +111,29 @@ def main():
     else:
         flo_paths = list(input_root.glob('*.flo'))
 
-    image_outputs = []
-    metadata_outputs = []
+    flo_paths_by_dir = collections.defaultdict(list)
     for flo_path in flo_paths:
-        output_dir = output_root / flo_path.parent.relative_to(input_root)
+        flo_paths_by_dir[flo_path.parent].append(flo_path)
+
+    flo_output_dirs = {}
+    for flo_dir in flo_paths_by_dir:
+        output_dir = output_root / flo_dir.relative_to(input_root)
+        flo_output_dirs[flo_dir] = output_dir
         output_dir.mkdir(exist_ok=True, parents=True)
-        image_outputs.append(output_dir / (flo_path.stem + '.png'))
-        metadata_outputs.append(
-            output_dir / (flo_path.stem + '_magnitude_minmax.txt'))
 
+    if not args.pavel_matlab_conversion:
+        image_outputs = []
+        for flo_path in flo_paths:
+            output_image = (
+                flo_output_dirs[flo_path.parent] / (flo_path.stem + '.png'))
+            image_outputs.append(output_image)
 
-    tasks = zip(tqdm(flo_paths), image_outputs, metadata_outputs)
-    Parallel(n_jobs=8)(delayed(convert_flo)(*task) for task in tasks)
+        tasks = zip(tqdm(flo_paths), image_outputs)
+        Parallel(n_jobs=8)(
+            delayed(convert_flo)(*task) for task in tasks)
+    else:
+        for flo_dir in flo_paths_by_dir:
+            convert_flo_pavel_matlab(flo_dir, flo_output_dirs[flo_dir])
 
 
 if __name__ == "__main__":
