@@ -1,9 +1,8 @@
-
 function img = readFloFile(filename)
 
-% readFlowFile read a flow file FILENAME into 2-band image IMG 
+% readFlowFile read a flow file FILENAME into 2-band image IMG
 
-%   According to the c++ source code of Daniel Scharstein 
+%   According to the c++ source code of Daniel Scharstein
 %   Contact: schar@middlebury.edu
 
 %   Author: Deqing Sun, Department of Computer Science, Brown University
@@ -29,7 +28,7 @@ function img = readFloFile(filename)
 % ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 % WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 % ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. 
+% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 TAG_FLOAT = 202021.25;  % check for this when READING the file
 
@@ -45,7 +44,7 @@ if length(filename(idx:end)) == 1
     error('readFlowFile: extension required in filename %s', filename);
 end;
 
-% if strcmp(filename(idx:end), '.flo') ~= 1    
+% if strcmp(filename(idx:end), '.flo') ~= 1
 %     error('readFlowFile: filename %s should have extension ''.flo''', filename);
 % end;
 
@@ -84,5 +83,5 @@ tmp = reshape(tmp, [width*nBands, height]);
 tmp = tmp';
 img(:,:,1) = tmp(:, (1:width)*nBands-1);
 img(:,:,2) = tmp(:, (1:width)*nBands);
-      
+
 fclose(fid);
