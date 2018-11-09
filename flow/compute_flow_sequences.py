@@ -16,7 +16,7 @@ from natsort import natsorted
 from PIL import Image
 from tqdm import tqdm
 
-from flow.convert_flo_png import convert_flo
+from flow.convert_flo_png import convert_flo, convert_flo_pavel_matlab
 from utils.log import setup_logging
 
 
@@ -184,8 +184,27 @@ def compute_flownet2_flow(flo_input_outputs, logger, gpu,
             raise
 
 
-def compute_sequence_flow(image_paths, output_dir, flow_fn, flow_args,
-                          gpu_queue, logger_name, convert_png):
+def compute_sequence_flow(input_dir, output_dir, flow_fn, flow_args, gpu_queue,
+                          logger_name, convert_png, remove_flo, extension):
+    """
+    Args:
+        convert_png (str or False): How to convert .flo files to .png. Choices
+            are 'default' or 'pavel-matlab'; the latter uses Pavel Tokmakov's
+            MATLAB code for converting .flo to .png in a format that works
+            with his motion segmentation methods. If False or None, .flo files
+            are not converted.
+        remove_flo (bool): If convert_png is set, then this boolean controls
+            whether to remove .flo files after conversion.
+    """
+    if convert_png:
+        assert convert_png in ('default', 'pavel-matlab'), (
+            'Unknown convert_png: %s' % convert_png)
+    else:
+        assert not remove_flo, (
+            'remove_flo is only allowed if convert_png is set')
+
+    image_paths = natsorted(
+        list(input_dir.glob('*' + extension)), key=lambda x: x.stem)
     times = {}
     times['start'] = time.time()
     file_logger = logging.getLogger(logger_name)
@@ -203,23 +222,20 @@ def compute_sequence_flow(image_paths, output_dir, flow_fn, flow_args,
 
     # List of tuples: (frame1_path, frame2_path, output_flo)
     flo_input_outputs = []
-
-    # List of tuples: (flo_input, output_png, output_metadata).
-    # If convert_png=False, this list is empty.
-    png_input_outputs = []
+    # All output .flo files, including ones that already existed when the
+    # function was called
+    flo_outputs_all = []
 
     for frame1, frame2 in zip(image_paths[:-1], image_paths[1:]):
         flo = output_dir / (frame1.stem + '.flo')
-
-        if convert_png:
-            png = flo.with_suffix('.png')
-            metadata = flo.with_name(flo.stem + '_magnitude_minmax.txt')
-            # Already computed everything, skip this frame pair.
-            if png.exists() and metadata.exists():
-                continue
-            png_input_outputs.append((flo, png, metadata))
-
-        if not flo.exists():
+        flo_outputs_all.append(flo)
+        converted_already = False
+        if convert_png == 'default':
+            converted_already = flo.with_suffix('.png').exists()
+        elif convert_png == 'pavel-matlab':
+            converted_already = flo.with_name('angleField_' + flo.stem +
+                                              '.jpg').exists()
+        if not flo.exists() and not converted_already:
             flo_input_outputs.append((frame1, frame2, flo))
 
     if flo_input_outputs:
@@ -236,19 +252,26 @@ def compute_sequence_flow(image_paths, output_dir, flow_fn, flow_args,
     else:
         times['gpu_wait_start'] = times['gpu_wait_end'] = 0
 
-    # png_input_outputs will be empty if convert_png=False or if we have
-    # already converted all the flows.
-    for flo_path, png_path, metadata_path in png_input_outputs:
-        try:
-            convert_flo(flo_path, png_path, metadata_path)
-        except Exception as e:
-            logging.error('ERROR converting flo path: %s' % flo_path)
-            raise e
-        flo_path.unlink()
+    if convert_png == 'default':
+        for flo_path in flo_outputs_all:
+            try:
+                if flo_path.exists():
+                    convert_flo(flo_path)
+                    if remove_flo:
+                        flo_path.unlink()
+            except Exception as e:
+                logging.error('ERROR converting flo path: %s' % flo_path)
+                raise e
+    elif convert_png == 'pavel-matlab':
+        convert_flo_pavel_matlab(output_dir, output_dir)
+        if remove_flo:
+            for flo_path in flo_outputs_all:
+                if flo_path.exists():
+                    flo_path.unlink()
 
     time_taken = (time.time() - times['start']) - (
         times['gpu_wait_end'] - times['gpu_wait_start'])
-    if not flo_input_outputs and not png_input_outputs:
+    if not flo_input_outputs:
         file_logger.info(
             'Output dir %s was already processed, skipping. Time taken: %s' %
             (output_dir, time_taken))
@@ -283,9 +306,10 @@ def main():
     parser.add_argument('--extension', default='.png')
     parser.add_argument(
         '--convert-to-angle-magnitude-png',
+        choices=['off', 'on', 'pavel-matlab'],
+        default='off',
         help=('Convert flo files to angle/magnitude PNGs, and do not keep '
-              '.flo files around.'),
-        action='store_true')
+              '.flo files around.'))
     parser.add_argument('--gpus', default=[0, 1, 2, 3], nargs='*', type=int)
     parser.add_argument(
         '--num-workers',
@@ -367,19 +391,23 @@ def main():
             'tmp_prefix': file_name
         }
     tasks = []
+    convert_png = {
+        'off': False,
+        'on': 'default',
+        'pavel-matlab': 'pavel-matlab'
+    }[args.convert_to_angle_magnitude_png]
     for sequence_path in sequences:
         output_dir = output_root / (sequence_path.relative_to(input_root))
-        image_paths = natsorted(
-            list(sequence_path.glob('*' + args.extension)),
-            key=lambda x: x.stem)
         tasks.append({
-            'image_paths': image_paths,
+            'input_dir': sequence_path,
             'output_dir': output_dir,
             'flow_fn': flow_fn,
             'flow_args': flow_args,
             'gpu_queue': gpu_queue,
             'logger_name': logging_path,
-            'convert_png': args.convert_to_angle_magnitude_png,
+            'convert_png': convert_png,
+            'remove_flo': bool(convert_png),
+            'extension': args.extension
         })
 
     list(
