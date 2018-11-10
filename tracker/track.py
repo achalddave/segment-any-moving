@@ -26,19 +26,6 @@ from utils.distance import chi_square_distance  # , intersection_distance
 from utils.log import setup_logging
 
 
-def decay_weighted_mean(values, sigma=5):
-    """Weighted mean that focuses on most recent values.
-
-    values[-i] is weighted by np.exp(i / sigma). Higher sigma weights older
-    values more heavily.
-
-    values (array-like): Values arranged from oldest to newest. values[-1] is
-        weighted most heavily, values[0] is weighted least.
-    """
-    weights = np.exp([-i / sigma for i in range(len(values))])[::-1]
-    return np.average(values, weights=weights)
-
-
 class Detection():
     __next_id = 0
 
@@ -228,27 +215,6 @@ class Track():
 
 
 def track_distance(track, detection):
-    # if len(track.detections) > 2:
-    #     history = min(len(track.detections) - 1, 5)
-    #     centers = np.asarray(
-    #         [x.compute_center_box() for x in track.detections[-history:]])
-    #     velocities = centers[1:] - centers[:-1]
-    #     predicted_box = track.detections[-1].box
-    #     if np.all(
-    #             np.std(velocities, axis=0) < 0.1 *
-    #             track.detections[-1].compute_area_bbox()):
-    #         track.velocity = np.mean(velocities, axis=0)
-    #         predicted_center = centers[-1] + track.velocity
-    #     else:
-    #         predicted_center = centers[-1]
-    # else:
-    #     predicted_box = track.detections[-1].box
-    #     predicted_center = track.detections[-1].compute_center_box()
-    # area = decay_weighted_mean(
-    #     [x.compute_area_bbox() for x in track.detections])
-    # target_area = detection.compute_area_bbox()
-    # return (max([abs(p1 - p0)
-    #              for p0, p1 in zip(predicted_box, detection.box)]) / area)
     predicted_cx, predicted_cy = track.detections[-1].compute_center_box()
     detection_cx, detection_cy = detection.compute_center_box()
     diff_norm = ((predicted_cx - detection_cx)**2 +
@@ -478,14 +444,12 @@ def visualize_detections(image,
     for i in sorted_inds:
         detection = detections[i]
         track_friendly_id = detection.track.friendly_id
-        if track_friendly_id is None:
-            __import__('ipdb').set_trace()
+        assert track_friendly_id is not None
         color = [int(x) for x in colors[track_friendly_id % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         cx, cy = detection.compute_center_box()
         image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
-        # image = vis.vis_bbox(image, (cx - 2, cy - 2, 2, 2), color, thick=3)
 
         # Draw spatial distance threshold
         if tracking_params['draw_spatial_threshold']:
@@ -497,24 +461,6 @@ def visualize_detections(image,
                 thickness=1,
                 color=color)
 
-        # if detection.track.velocity is not None:
-        #     vx, vy = detection.track.velocity
-        #     # Expand for visualization
-        #     vx *= 2
-        #     vy *= 2
-        #     logging.info(
-        #         'Drawing velocity at %s' % ((cx, cy, cx + vx, cy + vy), ))
-        #     cv2.arrowedLine(
-        #         image, (int(cx), int(cy)), (int(cx + vx), int(cy + vy)),
-        #         color=color,
-        #         thickness=3,
-        #         tipLength=1.0)
-        # else:
-        #     cv2.circle(
-        #         image, (int(cx), int(cy)),
-        #         radius=3,
-        #         thickness=1,
-        #         color=color)
         image = vis.vis_mask(
             image,
             detection.decoded_mask(),
