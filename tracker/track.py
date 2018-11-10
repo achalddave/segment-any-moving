@@ -524,7 +524,6 @@ def track(frame_paths,
                 Detection(box[:4], box[4], label, t, image, mask, feature))
         detections.append(current_detections)
 
-    current_tracks = []
     progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
     for t, (frame_path, frame_detections) in enumerate(
             zip(frame_paths, detections)):
@@ -534,11 +533,14 @@ def track(frame_paths,
             for detection in track.detections:
                 detection.clear_cache()
 
-        matched_tracks = match_detections(current_tracks, frame_detections,
+        active_tracks = [
+            track for track in all_tracks if
+            (t - track.last_timestamp()) < tracking_params['frames_skip_max']
+        ]
+        matched_tracks = match_detections(active_tracks, frame_detections,
                                           tracking_params)
 
         # Tracks that were assigned a detection in this frame.
-        continued_tracks = []
         for detection in frame_detections:
             track = matched_tracks[detection.id]
             if track is None:
@@ -549,17 +551,6 @@ def track(frame_paths,
                     continue
 
             track.add_detection(detection, t)
-            continued_tracks.append(track)
-
-        continued_track_ids = set([x.id for x in continued_tracks])
-        skipped_tracks = []
-        for track in current_tracks:
-            skipped_frames = t - track.last_timestamp()
-            if (track.id not in continued_track_ids
-                    and skipped_frames < tracking_params['frames_skip_max']):
-                skipped_tracks.append(track)
-
-        current_tracks = continued_tracks + skipped_tracks
     for index, t in enumerate(all_tracks):
         t.friendly_id = index
     return all_tracks
