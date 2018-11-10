@@ -92,7 +92,6 @@ def db_eval_view(db_eval_dict, summary=True):
         ['Average'] +
         ["{: .3f}".format(n) for n in np.nanmean(X, axis=0)])
 
-    print("\n" + str(table) + "\n")
     return str(table)
 
 
@@ -133,7 +132,8 @@ def main():
 
     davis_h5 = args.output_dir / (args.masks_dir.stem + '.h5')
     davis_data = aggregate_frame_eval(davis_h5)
-    db_eval_view(davis_data)
+    output = db_eval_view(davis_data)
+    logging.info('Results:\n%s\n', output)
 
 
 if __name__ == "__main__":
