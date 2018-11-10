@@ -490,46 +490,53 @@ def track(frame_paths,
         filter_label (str):
     """
     all_tracks = []
-    current_tracks = []
-    progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
-    for timestamp, (image_path, image_results) in enumerate(
+
+    # detections[i] contains list of Detections for frame_paths[i]
+    detections = []
+    for t, (frame_path, image_results) in enumerate(
             zip(frame_paths, frame_detections)):
-        if timestamp > 0:
-            progress.update()
-        for track in current_tracks:
-            for detection in track.detections:
-                detection.clear_cache()
-
-        image = cv2.imread(str(image_path))[:, :, ::-1]  # BGR -> RGB
-
+        image = cv2.imread(str(frame_path))[:, :, ::-1]  # BGR -> RGB
         boxes, masks, _, labels = vis.convert_from_cls_format(
             image_results['boxes'], image_results['segmentations'],
             image_results['keypoints'])
 
         if boxes is None:
-            logging.info('No predictions for image %s', image_path.name)
+            logging.info('No predictions for image %s', frame_path.name)
             boxes, masks = [], []
 
         if ('features' in image_results
                 and tracking_params['appearance_feature'] == 'mask'):
             # features are of shape (num_segments, d)
-            mask_features = list(image_results['features'])
+            features = list(image_results['features'])
         else:
-            mask_features = [None for _ in masks]
+            features = [None for _ in masks]
 
-        detections = [
-            Detection(box[:4], box[4], label, timestamp, image, mask,
-                      feature) for box, mask, label, feature in zip(
-                          boxes, masks, labels, mask_features)
-            if (box[4] > tracking_params['score_continue_min'] and (
-                filter_label is None or label == filter_label))
-        ]
-        matched_tracks = match_detections(current_tracks, detections,
+        current_detections = []
+        for box, mask, label, feature in zip(boxes, masks, labels, features):
+            low_scoring = box[4] <= tracking_params['score_continue_min']
+            label_mismatch = filter_label is not None and label != filter_label
+            if low_scoring or label_mismatch:
+                continue
+            current_detections.append(
+                Detection(box[:4], box[4], label, t, image, mask, feature))
+        detections.append(current_detections)
+
+    current_tracks = []
+    progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
+    for t, (frame_path, frame_detections) in enumerate(
+            zip(frame_paths, detections)):
+        if t > 0:
+            progress.update()
+        for track in all_tracks:
+            for detection in track.detections:
+                detection.clear_cache()
+
+        matched_tracks = match_detections(current_tracks, frame_detections,
                                           tracking_params)
 
         # Tracks that were assigned a detection in this frame.
         continued_tracks = []
-        for detection in detections:
+        for detection in frame_detections:
             track = matched_tracks[detection.id]
             if track is None:
                 if detection.score > tracking_params['score_init_min']:
@@ -538,15 +545,15 @@ def track(frame_paths,
                 else:
                     continue
 
-            track.add_detection(detection, timestamp)
+            track.add_detection(detection, t)
             continued_tracks.append(track)
 
         continued_track_ids = set([x.id for x in continued_tracks])
         skipped_tracks = []
         for track in current_tracks:
+            skipped_frames = t - track.last_timestamp()
             if (track.id not in continued_track_ids
-                    and (timestamp - track.last_timestamp()) <
-                    tracking_params['frames_skip_max']):
+                    and skipped_frames < tracking_params['frames_skip_max']):
                 skipped_tracks.append(track)
 
         current_tracks = continued_tracks + skipped_tracks
