@@ -68,6 +68,9 @@ class Detection():
             'mask_histogram_edges': None
         }
 
+    def tracked(self):
+        return self.track is not None
+
     def clear_cache(self):
         for key in self._cached_values:
             self._cached_values[key] = None
@@ -173,7 +176,7 @@ class Detection():
             '{'
             f't: {self.timestamp}, box: {self.box}, score: {self.score}, '
             f'label: {self.label}, id: {self.label}')
-        if self.track is not None:
+        if self.tracked():
             output += f', track: {self.track}'
         return output + '}'
 
