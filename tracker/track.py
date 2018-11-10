@@ -294,20 +294,18 @@ def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
         track_detection = track.detections[-1]
         for i, detection in enumerate(candidates[track.id]):
             if appearance_feature == 'mask':
-                appearance_distances[i] = cosine(
-                    track_detection.mask_feature,
-                    detection.mask_feature)
+                appearance_distances[i] = cosine(track_detection.mask_feature,
+                                                 detection.mask_feature)
             elif appearance_feature == 'histogram':
                 appearance_distances[i] = chi_square_distance(
-                        track_detection.compute_histogram()[0],
-                        detection.compute_histogram()[0])
+                    track_detection.compute_histogram()[0],
+                    detection.compute_histogram()[0])
 
         sorted_distances = sorted(
             appearance_distances.items(), key=lambda x: x[1])
         best_match, best_distance = sorted_distances[0]
-        second_best_distance = (sorted_distances[1][1]
-                                if len(sorted_distances) > 1 else
-                                np.float('inf'))
+        second_best_distance = (sorted_distances[1][1] if
+                                len(sorted_distances) > 1 else np.float('inf'))
         if ((second_best_distance - best_distance) > appearance_gap):
             new_candidates[track.id] = [candidates[track.id][best_match]]
         else:
@@ -408,8 +406,7 @@ def match_detections(tracks, detections, tracking_params):
     detections_by_id = {d.id: d for d in detections}
     for timestamp in timestamps:
         single_timestamp_matched_tracks = _match_detections_single_timestep(
-            tracks_by_timestamp[timestamp],
-            unmatched_detections,
+            tracks_by_timestamp[timestamp], unmatched_detections,
             tracking_params)
         new_unmatched_detections = []
         for detection_id, track in single_timestamp_matched_tracks.items():
@@ -809,7 +806,8 @@ def main():
     parser.add_argument(
         '--dataset', default='coco', choices=['coco', 'objectness'])
     parser.add_argument(
-        '--filename-format', choices=['frame', 'sequence_frame', 'fbms'],
+        '--filename-format',
+        choices=['frame', 'sequence_frame', 'fbms'],
         default='frame',
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
