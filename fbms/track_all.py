@@ -13,6 +13,8 @@ import utils.log as log_utils
 from utils.fbms import utils as fbms_utils
 
 
+# TODO(achald): Optionally output numpy segmentations, to avoid extra
+# parse_dat_to_numpy.py run.
 def output_fbms_tracks(tracks, groundtruth_dir, output_file, progress=True):
     # Map frame number to list of Detections
     detections_by_frame = collections.defaultdict(list)
