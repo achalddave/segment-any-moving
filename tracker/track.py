@@ -313,7 +313,7 @@ def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
     return new_candidates
 
 
-def _match_detections_single_timestep(tracks, detections, tracking_params):
+def match_detections_single_timestep(tracks, detections, tracking_params):
     detections = sorted(detections, key=lambda d: d.score, reverse=True)
     tracks = sorted(tracks, key=lambda t: t.detections[-1].score, reverse=True)
     candidates = {track.id: list(detections) for track in tracks}
@@ -405,7 +405,7 @@ def match_detections(tracks, detections, tracking_params):
     unmatched_detections = detections
     detections_by_id = {d.id: d for d in detections}
     for timestamp in timestamps:
-        single_timestamp_matched_tracks = _match_detections_single_timestep(
+        single_timestamp_matched_tracks = match_detections_single_timestep(
             tracks_by_timestamp[timestamp], unmatched_detections,
             tracking_params)
         new_unmatched_detections = []
