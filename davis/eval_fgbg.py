@@ -12,7 +12,7 @@ import numpy as np
 import utils.log as log_utils
 
 # Can be overridden from argparse
-DAVIS_DIR = '/home/achald/research/misc/davis-2016/'
+DAVIS_DIR = '/home/achald/research/misc/datasets/davis/davis-2016/'
 
 
 def db_statistics(per_frame_values):
