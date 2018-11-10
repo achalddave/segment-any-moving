@@ -106,6 +106,7 @@ def main():
     parser.add_argument(
         '--davis16-root',
         default=Path(DAVIS_DIR),
+        type=Path,
         help=('DAVIS evaluation code. You will likely need to use the fork '
               'at https://github.com/achalddave/davis16-python3, which '
               'works with python3 and ignores extra files/directories '
@@ -113,6 +114,7 @@ def main():
 
     args = parser.parse_args()
 
+    assert args.davis16_root.exists()
     args.output_dir = Path(
         args.output_dir.format(masks_parent=args.masks_dir.parent))
     args.output_dir.mkdir(exist_ok=True)
