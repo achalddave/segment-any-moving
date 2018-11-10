@@ -545,7 +545,7 @@ def track(frame_paths,
         skipped_tracks = []
         for track in current_tracks:
             if (track.id not in continued_track_ids
-                    and (track.last_timestamp() - timestamp) <
+                    and (timestamp - track.last_timestamp()) <
                     tracking_params['frames_skip_max']):
                 skipped_tracks.append(track)
 
