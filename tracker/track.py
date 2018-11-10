@@ -549,7 +549,7 @@ def track(frame_paths,
         active_tracks = [
             track for track in all_tracks
             if (t - track.detections[-1].timestamp
-                ) < tracking_params['frames_skip_max']
+                ) <= tracking_params['frames_skip_max']
         ]
         matched_tracks = match_detections(active_tracks, frame_detections,
                                           tracking_params)
