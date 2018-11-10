@@ -209,6 +209,21 @@ class Track():
             ]
         return self._cache['ordered_detections']
 
+    def next_detection(self, t):
+        """Return the next detection closest to time t."""
+        try:
+            return next(x for x in self.detections if x.timestamp >= t)
+        except StopIteration:
+            return None
+
+    def previous_detection(self, t):
+        """Return the previous detection closest to time t."""
+        try:
+            return next(
+                x for x in reversed(self.detections) if x.timestamp <= t)
+        except StopIteration:
+            return None
+
     def add_detection(self, detection):
         assert detection.track is None or detection.track == self, (
             'detection already assigned to another track')
@@ -398,7 +413,7 @@ def match_detections_single_timestep(tracks, detections, tracking_params):
         return matched_tracks
 
 
-def match_detections(tracks, detections, tracking_params):
+def match_detections(tracks, detections, tracking_params, backwards=False):
     """
     Args:
         track (list): List of Track objects, containing tracks up to this
@@ -408,21 +423,27 @@ def match_detections(tracks, detections, tracking_params):
     Returns:
         matched_tracks (dict): Map detection id to matching Track, or None.
     """
-    # Tracks sorted by most recent to oldest.
-    tracks_by_timestamp = collections.defaultdict(list)
-    for track in tracks:
-        tracks_by_timestamp[track.detections[-1].timestamp].append(track)
+    t = detections[0].timestamp
 
-    timestamps = sorted(tracks_by_timestamp.keys(), reverse=True)
+    # Tracks sorted by closest to furthest in time from current time.
+    tracks_by_offset = collections.defaultdict(list)
+    for track in tracks:
+        if backwards:
+            closest_detection = track.next_detection(t)
+        else:
+            closest_detection = track.previous_detection(t)
+        tracks_by_offset[closest_detection.timestamp].append(track)
+
+    time_offsets = sorted(tracks_by_offset.keys(), reverse=True)
 
     matched_tracks = {d.id: None for d in detections}
 
     # Match detections to the most recent tracks first.
     unmatched_detections = detections
     detections_by_id = {d.id: d for d in detections}
-    for timestamp in timestamps:
+    for time_offset in time_offsets:
         single_timestamp_matched_tracks = match_detections_single_timestep(
-            tracks_by_timestamp[timestamp], unmatched_detections,
+            tracks_by_offset[time_offset], unmatched_detections,
             tracking_params)
         new_unmatched_detections = []
         for detection_id, track in single_timestamp_matched_tracks.items():
@@ -537,11 +558,11 @@ def track(frame_paths,
                 Detection(box[:4], box[4], label, t, image, mask, feature))
         detections.append(current_detections)
 
-    progress = tqdm(total=len(frame_paths), disable=not progress, desc='track')
+    bar = tqdm(total=len(frame_paths), disable=not progress, desc='track')
     for t, (frame_path, frame_detections) in enumerate(
             zip(frame_paths, detections)):
         if t > 0:
-            progress.update()
+            bar.update()
         for track in all_tracks:
             for detection in track.detections:
                 detection.clear_cache()
@@ -565,6 +586,53 @@ def track(frame_paths,
                     continue
 
             track.add_detection(detection)
+
+    # There should be a neat "oh wow amazing code reuse" way to do this, but
+    # #shipit.
+    if tracking_params['bidirectional']:
+        logging.info('Tracking backwards')
+        bar = tqdm(
+            total=len(frame_paths),
+            disable=not progress,
+            desc='track backwards')
+        for t, (frame_path, frame_detections) in reversed(
+                list(enumerate(zip(frame_paths, detections)))):
+            if t < len(frame_paths) - 1:
+                bar.update()
+            for track in all_tracks:
+                for detection in track.detections:
+                    detection.clear_cache()
+
+            unmatched_detections = [
+                d for d in frame_detections if not d.tracked()
+            ]
+            if not unmatched_detections:
+                continue
+
+            active_tracks = []
+            for track in all_tracks:
+                # Keep tracks that
+                # (1) end at or after t,
+                # (2) start before t + frames_skip_max
+                # (3) don't have a detection at time t
+                ends_after = track.detections[-1].timestamp > t
+                starts_before_skip = (track.detections[0].timestamp <
+                                      t + tracking_params['frames_skip_max'])
+                needs_detection = t not in track.detections_by_time
+                if ends_after and starts_before_skip and needs_detection:
+                    active_tracks.append(track)
+            if not active_tracks:
+                continue
+
+            matched_tracks = match_detections(
+                active_tracks, unmatched_detections, tracking_params, backwards=True)
+
+            # Tracks that were assigned a detection in this frame.
+            for detection in unmatched_detections:
+                track = matched_tracks[detection.id]
+                if track is None:
+                    continue
+                track.add_detection(detection)
 
     for index, t in enumerate(all_tracks):
         t.friendly_id = index
@@ -752,6 +820,10 @@ def add_tracking_arguments(root_parser, suppress_args=None):
         action='store_true',
         help=('Ignore labels when matching detections. By default, we only '
               'match detections if their labels match.'))
+    parser.add_argument(
+        '--bidirectional',
+        action='store_true',
+        help='Whether to track backwards as well as forwards in time.')
 
     # TODO(achald): Add help text.
     add_argument(
