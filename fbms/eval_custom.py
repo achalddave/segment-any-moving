@@ -215,12 +215,15 @@ def main():
         '\n%s' % simple_table([('Sequence', 'Precision', 'Recall',
                                 'F-measure')] + formatted_metrics))
 
-    logging.info('Average precision: %.2f',
-                 np.mean([m[1] for m in sequence_metrics]))
-    logging.info('Average recall: %.2f',
-                 np.mean([m[2] for m in sequence_metrics]))
+    avg_precision = np.mean([m[1] for m in sequence_metrics])
+    avg_recall = np.mean([m[2] for m in sequence_metrics])
+    logging.info('Average precision: %.2f', avg_precision)
+    logging.info('Average recall: %.2f', avg_recall)
     logging.info('Average f-measure: %.2f',
                  np.mean([m[3] for m in sequence_metrics]))
+
+    logging.info('F-measure of average prec/rec: %.2f',
+                 2 * avg_precision * avg_recall / (avg_precision + avg_recall))
 
 
 if __name__ == "__main__":
