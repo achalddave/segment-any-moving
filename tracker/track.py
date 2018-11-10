@@ -185,7 +185,11 @@ class Track():
     __next_id = 0
 
     def __init__(self, friendly_id=None):
-        self.detections = []
+        self.detections_by_time = {}
+        self._cache = {
+            'ordered_detections': None
+        }
+
         self.velocity = None
         self.id = Track.__next_id
         # Id used for user-facing things, like visualization or outputting to a
@@ -196,15 +200,24 @@ class Track():
         self.friendly_id = friendly_id
         Track.__next_id += 1
 
-    def add_detection(self, detection, timestamp):
-        detection.track = self
-        self.detections.append(detection)
+    @property
+    def detections(self):
+        if self._cache['ordered_detections'] is None:
+            self._cache['ordered_detections'] = [
+                self.detections_by_time[x]
+                for x in sorted(self.detections_by_time)
+            ]
+        return self._cache['ordered_detections']
 
-    def last_timestamp(self):
-        if self.detections:
-            return self.detections[-1].timestamp
-        else:
-            return None
+    def add_detection(self, detection):
+        assert detection.track is None or detection.track == self, (
+            'detection already assigned to another track')
+        t = detection.timestamp
+        assert t not in self.detections_by_time, (
+            'Track already has detection at time t=%s' % t)
+        detection.track = self
+        self.detections_by_time[t] = detection
+        self._cache['ordered_detections'] = None
 
     def __str__(self):
         output = f'{{id: {self.id}'
@@ -398,7 +411,7 @@ def match_detections(tracks, detections, tracking_params):
     # Tracks sorted by most recent to oldest.
     tracks_by_timestamp = collections.defaultdict(list)
     for track in tracks:
-        tracks_by_timestamp[track.last_timestamp()].append(track)
+        tracks_by_timestamp[track.detections[-1].timestamp].append(track)
 
     timestamps = sorted(tracks_by_timestamp.keys(), reverse=True)
 
@@ -534,8 +547,9 @@ def track(frame_paths,
                 detection.clear_cache()
 
         active_tracks = [
-            track for track in all_tracks if
-            (t - track.last_timestamp()) < tracking_params['frames_skip_max']
+            track for track in all_tracks
+            if (t - track.detections[-1].timestamp
+                ) < tracking_params['frames_skip_max']
         ]
         matched_tracks = match_detections(active_tracks, frame_detections,
                                           tracking_params)
@@ -550,7 +564,8 @@ def track(frame_paths,
                 else:
                     continue
 
-            track.add_detection(detection, t)
+            track.add_detection(detection)
+
     for index, t in enumerate(all_tracks):
         t.friendly_id = index
     return all_tracks
