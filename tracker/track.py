@@ -209,6 +209,19 @@ class Track():
             ]
         return self._cache['ordered_detections']
 
+    def nearest_detection(self, t, backward):
+        """Return the nearest detection at time t for matching to.
+
+        Args:
+            backward (bool): If True, return the nearest detection with
+                timestamp > t. Otherwise (by default), return the previous
+                nearest detection.
+        """
+        if not backward:
+            return self.previous_detection(t)
+        else:
+            return self.next_detection(t)
+
     def next_detection(self, t):
         """Return the next detection closest to time t."""
         try:
@@ -245,8 +258,9 @@ class Track():
         return output + '}'
 
 
-def track_distance(track, detection):
-    predicted_cx, predicted_cy = track.detections[-1].compute_center_box()
+def track_distance(track, detection, backward):
+    predicted_cx, predicted_cy = track.nearest_detection(
+        detection.timestamp, backward).compute_center_box()
     detection_cx, detection_cy = detection.compute_center_box()
     diff_norm = ((predicted_cx - detection_cx)**2 +
                  (predicted_cy - detection_cy)**2)**0.5
@@ -254,7 +268,10 @@ def track_distance(track, detection):
     return (diff_norm / diagonal)
 
 
-def filter_areas(tracks, candidates, area_ratio):
+def filter_areas(tracks,
+                 candidates,
+                 area_ratio,
+                 backward):
     """
     Args:
         tracks (list): List of Tracks
@@ -264,8 +281,14 @@ def filter_areas(tracks, candidates, area_ratio):
         candidates (dict): Map track id to list of Detections.
     """
     new_candidates = {}
+    timestamp = None
     for track in tracks:
-        track_area = track.detections[-1].compute_area()
+        if not candidates[track.id]:
+            continue
+        if timestamp is None:
+            timestamp = candidates[track.id][0]
+        nearest_detection = track.nearest_detection(timestamp, backward)
+        track_area = nearest_detection.compute_area()
         new_candidates[track.id] = []
         if track_area == 0:
             continue
@@ -281,24 +304,26 @@ def filter_labels(tracks, candidates):
     """Filter candidates with different labels."""
     new_candidates = {}
     for track in tracks:
-        track_label = track.detections[-1].label
+        assert all(
+            x.label == track.detections[0].label for x in track.detections[1:])
+        track_label = track.detections[0].label
         new_candidates[track.id] = [
             d for d in candidates[track.id] if d.label == track_label
         ]
     return new_candidates
 
 
-def filter_spatial_distance(tracks, candidates, max_distance):
+def filter_spatial_distance(tracks, candidates, max_distance, backward):
     return {
         track.id: [
             detection for detection in candidates[track.id]
-            if track_distance(track, detection) < max_distance
+            if track_distance(track, detection, backward) < max_distance
         ]
         for track in tracks
     }
 
 
-def compute_ious(tracks, candidates):
+def compute_ious(tracks, candidates, backward):
     """
     Returns:
         ious (dict): Map track.id to list of ious for each candidate detection
@@ -310,19 +335,24 @@ def compute_ious(tracks, candidates):
         if not candidates[track.id]:
             continue
         ious[track.id] = [
-            track.detections[-1].mask_iou(detection)
+            track.nearest_detection(detection.timestamp,
+                                    backward).mask_iou(detection)
             for detection in candidates[track.id]
         ]
     return ious
 
 
-def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
+def filter_appearance(tracks,
+                      candidates,
+                      appearance_feature,
+                      appearance_gap,
+                      backward):
     new_candidates = {}
     for track in tracks:
         if not candidates[track.id]:
             continue
         appearance_distances = {}
-        track_detection = track.detections[-1]
+        track_detection = track.nearest_timestamp(candidates[0], backward)
         for i, detection in enumerate(candidates[track.id]):
             if appearance_feature == 'mask':
                 appearance_distances[i] = cosine(track_detection.mask_feature,
@@ -344,22 +374,32 @@ def filter_appearance(tracks, candidates, appearance_feature, appearance_gap):
     return new_candidates
 
 
-def match_detections_single_timestep(tracks, detections, tracking_params):
+def match_detections_single_timestep(tracks,
+                                     detections,
+                                     tracking_params,
+                                     backward):
     detections = sorted(detections, key=lambda d: d.score, reverse=True)
-    tracks = sorted(tracks, key=lambda t: t.detections[-1].score, reverse=True)
+    if not detections:
+        return {}
+    timestamp = detections[0].timestamp
+
+    tracks = sorted(
+        tracks,
+        key=lambda track: track.nearest_detection(timestamp, backward).score,
+        reverse=True)
     candidates = {track.id: list(detections) for track in tracks}
 
     # Keep candidates with similar areas only.
     if tracking_params['area_ratio'] > 0:
         candidates = filter_areas(tracks, candidates,
-                                  tracking_params['area_ratio'])
+                                  tracking_params['area_ratio'], backward)
 
     if tracking_params['spatial_dist_max'] > 0:
         candidates = filter_spatial_distance(
-            tracks, candidates, tracking_params['spatial_dist_max'])
+            tracks, candidates, tracking_params['spatial_dist_max'], backward)
 
     # Maps track ids to iou for each track candidate
-    ious = compute_ious(tracks, candidates)
+    ious = compute_ious(tracks, candidates, backward)
 
     # If we're not using the appearance, just use Hungarian method to assing
     # tracks and detections.
@@ -396,7 +436,8 @@ def match_detections_single_timestep(tracks, detections, tracking_params):
     if tracking_params['appearance_feature'] != 'none':
         candidates = filter_appearance(tracks, candidates,
                                        tracking_params['appearance_feature'],
-                                       tracking_params['appearance_gap'])
+                                       tracking_params['appearance_gap'],
+                                       backward)
 
         # Loop over detections in descending order of scores; if the detection
         # is the only candidate for any track, assign it to that track.
@@ -413,12 +454,13 @@ def match_detections_single_timestep(tracks, detections, tracking_params):
         return matched_tracks
 
 
-def match_detections(tracks, detections, tracking_params, backwards=False):
+def match_detections(tracks, detections, tracking_params, backward):
     """
     Args:
         track (list): List of Track objects, containing tracks up to this
             frame.
         detections (list): List of Detection objects for the current frame.
+        backward (bool): Whether we are tracking backwards.
 
     Returns:
         matched_tracks (dict): Map detection id to matching Track, or None.
@@ -428,13 +470,14 @@ def match_detections(tracks, detections, tracking_params, backwards=False):
     # Tracks sorted by closest to furthest in time from current time.
     tracks_by_offset = collections.defaultdict(list)
     for track in tracks:
-        if backwards:
-            closest_detection = track.next_detection(t)
+        if backward:
+            closest_offset = track.next_detection(t).timestamp - t
         else:
-            closest_detection = track.previous_detection(t)
-        tracks_by_offset[closest_detection.timestamp].append(track)
+            closest_offset = t - track.previous_detection(t).timestamp
+        tracks_by_offset[closest_offset].append(track)
 
-    time_offsets = sorted(tracks_by_offset.keys(), reverse=True)
+    time_offsets = sorted(tracks_by_offset.keys())
+    assert all(t > 0 for t in time_offsets)
 
     matched_tracks = {d.id: None for d in detections}
 
@@ -444,7 +487,7 @@ def match_detections(tracks, detections, tracking_params, backwards=False):
     for time_offset in time_offsets:
         single_timestamp_matched_tracks = match_detections_single_timestep(
             tracks_by_offset[time_offset], unmatched_detections,
-            tracking_params)
+            tracking_params, backward)
         new_unmatched_detections = []
         for detection_id, track in single_timestamp_matched_tracks.items():
             if track is not None:
@@ -558,80 +601,65 @@ def track(frame_paths,
                 Detection(box[:4], box[4], label, t, image, mask, feature))
         detections.append(current_detections)
 
-    bar = tqdm(total=len(frame_paths), disable=not progress, desc='track')
-    for t, (frame_path, frame_detections) in enumerate(
-            zip(frame_paths, detections)):
-        if t > 0:
-            bar.update()
-        for track in all_tracks:
-            for detection in track.detections:
-                detection.clear_cache()
-
-        active_tracks = [
-            track for track in all_tracks
-            if (t - track.detections[-1].timestamp
-                ) <= tracking_params['frames_skip_max']
-        ]
-        matched_tracks = match_detections(active_tracks, frame_detections,
-                                          tracking_params)
-
-        # Tracks that were assigned a detection in this frame.
-        for detection in frame_detections:
-            track = matched_tracks[detection.id]
-            if track is None:
-                if detection.score > tracking_params['score_init_min']:
-                    track = Track()
-                    all_tracks.append(track)
-                else:
-                    continue
-
-            track.add_detection(detection)
-
-    # There should be a neat "oh wow amazing code reuse" way to do this, but
-    # #shipit.
     if tracking_params['bidirectional']:
-        logging.info('Tracking backwards')
-        bar = tqdm(
-            total=len(frame_paths),
-            disable=not progress,
-            desc='track backwards')
-        for t, (frame_path, frame_detections) in reversed(
-                list(enumerate(zip(frame_paths, detections)))):
-            if t < len(frame_paths) - 1:
-                bar.update()
+        directions = ['forward', 'backward']
+    else:
+        directions = ['forward']
+    for direction in directions:
+        forward = direction == 'forward'
+        timestamps = range(len(frame_paths))
+        if not forward:
+            timestamps = reversed(timestamps)
+
+        for t in tqdm(timestamps, disable=not progress,
+                      desc='track ' + direction):
+            frame_path = frame_paths[t]
+            frame_detections = [d for d in detections[t] if not d.tracked()]
+            if not frame_detections:
+                continue
+
             for track in all_tracks:
                 for detection in track.detections:
                     detection.clear_cache()
 
-            unmatched_detections = [
-                d for d in frame_detections if not d.tracked()
-            ]
-            if not unmatched_detections:
-                continue
-
-            active_tracks = []
-            for track in all_tracks:
-                # Keep tracks that
-                # (1) end at or after t,
-                # (2) start before t + frames_skip_max
-                # (3) don't have a detection at time t
-                ends_after = track.detections[-1].timestamp > t
-                starts_before_skip = (track.detections[0].timestamp <
-                                      t + tracking_params['frames_skip_max'])
-                needs_detection = t not in track.detections_by_time
-                if ends_after and starts_before_skip and needs_detection:
-                    active_tracks.append(track)
-            if not active_tracks:
-                continue
+            if forward:
+                active_tracks = [
+                    track for track in all_tracks
+                    if ((t - track.detections[-1].timestamp
+                         ) <= tracking_params['frames_skip_max'])
+                ]
+            else:
+                active_tracks = []
+                for track in all_tracks:
+                    # Keep tracks that
+                    # (1) end at or after t,
+                    # (2) start before t + frames_skip_max
+                    # (3) don't have a detection at time t
+                    ends_after = track.detections[-1].timestamp > t
+                    starts_before_skip = (
+                        track.detections[0].timestamp <
+                        t + tracking_params['frames_skip_max'])
+                    needs_detection = t not in track.detections_by_time
+                    if ends_after and starts_before_skip and needs_detection:
+                        active_tracks.append(track)
+                if not active_tracks:
+                    continue
 
             matched_tracks = match_detections(
-                active_tracks, unmatched_detections, tracking_params, backwards=True)
+                active_tracks,
+                frame_detections,
+                tracking_params,
+                backward=not forward)
 
             # Tracks that were assigned a detection in this frame.
-            for detection in unmatched_detections:
+            for detection in frame_detections:
                 track = matched_tracks[detection.id]
                 if track is None:
-                    continue
+                    if detection.score > tracking_params['score_init_min']:
+                        track = Track()
+                        all_tracks.append(track)
+                    else:
+                        continue
                 track.add_detection(detection)
 
     for index, t in enumerate(all_tracks):
