@@ -23,10 +23,10 @@ def main():
     parser.add_argument('--dat-file', type=Path)
     parser.add_argument(
         '--output',
-        type=Path,
-        required=True,
         help=('Output directory. If --dat-file is specified, this refers to '
-              'the output file.'))
+              'the output file. Default: {{dat_file_without_extension}}.npy '
+              'if --dat-file is specified, else '
+              '{{dat_dir}}/numpy-predictions if --dat-dir is specified.'))
     parser.add_argument(
         '--groundtruth-dir',
         type=Path,
@@ -51,6 +51,17 @@ def main():
     args = parser.parse_args()
     assert (args.dat_file is None) != (args.dat_dir is None), (
         'Exactly one of --dat-file or --dat-dir must be specified.')
+
+    if args.dat_file:
+        if not args.output:
+            args.output = '{dat_file_without_extension}.npy'
+        args.output = Path(
+            args.output.format(
+                dat_file_without_extension=args.dat_file.with_suffix('')))
+    else:
+        if not args.output:
+            args.output = '{dat_dir}/numpy-predictions'
+        args.output = Path(args.output.format(dat_dir=args.dat_dir))
 
     assert not args.output.exists()
     if args.dat_dir is not None:
