@@ -5,6 +5,7 @@ from pathlib import Path
 
 import utils.log as log_utils
 
+
 if __name__ == "__main__":
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
@@ -18,7 +19,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--eval-code-dir',
         type=Path,
-        default='/home/achald/research/misc/fbms-fgbg-eval-pavel')
+        default='/home/achald/research/misc/datasets/fbms/fgbg-eval-pavel/')
     parser.add_argument('--matlab-binary', type=Path, default='matlab')
 
     args = parser.parse_args()
