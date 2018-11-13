@@ -35,7 +35,9 @@ def main():
                 (frame_mask.shape[0], frame_mask.shape[1], 3),
                 dtype=np.uint8)
             for mask_id, mask in ids_and_masks:
-                color = colors[mask_id % args.num_colors]
+                if isinstance(mask_id, float):
+                    assert mask_id.is_integer()
+                color = colors[int(mask_id) % args.num_colors]
                 vis_mask[mask == 1] = color
             output_frame = (args.output_dir / mask_file.parent.relative_to(
                 args.input_dir) / mask_file.stem / (str(f) + '.png'))
