@@ -7,19 +7,19 @@ import pprint
 from pathlib import Path
 
 import numpy as np
+from natsort import natsorted, ns
 from PIL import Image
 from tqdm import tqdm
 
 import pycocotools.mask as mask_util
 
-from utils.fbms import utils as fbms_utils
 from utils.log import add_time_to_path, setup_logging
 
 
 def create_masks_sequence(predictions_dir, output_dir, threshold, mask_shape,
                           duplicate_last_frame):
-    pickle_files = sorted(
-        predictions_dir.glob('*.pickle'), key=lambda x: int(x.stem))
+    pickle_files = natsorted(
+        predictions_dir.glob('*.pickle'), alg=ns.PATH)
     if not pickle_files:
         logging.warn("Found no pickle files in %s; ignoring.", predictions_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
@@ -59,6 +59,12 @@ def create_masks_sequence(predictions_dir, output_dir, threshold, mask_shape,
         Image.fromarray(final_mask).save(output_path)
 
     if duplicate_last_frame:
+        try:
+            int(pickle_files[0].stem)
+        except ValueError as e:
+            logging.warn('Could not parse pickle file as integer, not '
+                         'duplicating last frame.')
+
         original_last = output_dir / ('%05d.png' % (len(pickle_files) - 1))
         new_last = output_dir / ('%05d.png' % len(pickle_files))
         if not new_last.exists():
@@ -85,7 +91,8 @@ def main():
         action='store_true',
         help=('Whether to duplicate the last frame. This is useful if we '
               'only have predictions for n-1 frames (since flow is only '
-              'computed on the first n-1 frames).'))
+              'computed on the first n-1 frames). NOTE: This only works if '
+              'the pickle files are of the form "<frame_id>.pickle".'))
 
     args = parser.parse_args()
 
@@ -100,6 +107,7 @@ def main():
     all_sequence_predictions = [
         x for x in args.detections_root.iterdir() if x.is_dir()
     ]
+
     # The DAVIS 2016 evaluation code really doesn't like any other files /
     # directories in the input directory, so we put the masks in a subdirectory
     # without the log file.
