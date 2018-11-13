@@ -63,7 +63,7 @@ def main():
     except subprocess.CalledProcessError as e:
         logging.error('Error found when evaluating:')
         output = e.output.decode('utf-8')
-        logging.exception(e.output.decode('utf-8'))
+        logging.exception(output)
         if ('Could not find "Average region density" in the file!' in output
                 and len(args.predictions_dir) > 250):
             logging.info(
