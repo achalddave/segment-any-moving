@@ -3,6 +3,8 @@ import logging
 import numpy as np
 from pathlib import Path
 
+from tqdm import tqdm
+
 from utils.fbms.utils import FbmsGroundtruth, parse_tracks
 from utils.log import setup_logging
 
@@ -98,8 +100,9 @@ def main():
         groundtruths = [args.groundtruth_dir]
         outputs = [args.output]
 
+    single_input = len(inputs) == 1
     for input_path, groundtruth_path, output_path in zip(
-            inputs, groundtruths, outputs):
+            tqdm(inputs, disable=single_input), groundtruths, outputs):
         groundtruth = FbmsGroundtruth(groundtruth_path)
 
         with open(input_path, 'r') as f:
@@ -108,7 +111,8 @@ def main():
         segmentation = parse_tracks(
             tracks_txt,
             image_shape=(groundtruth.image_height, groundtruth.image_width),
-            track_label_size_space_separated=args.label_size_space_separated)
+            track_label_size_space_separated=args.label_size_space_separated,
+            progress=not single_input)
         np.save(output_path, segmentation)
 
 
