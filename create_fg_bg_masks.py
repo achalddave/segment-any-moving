@@ -1,6 +1,7 @@
 """Create foreground/background motion masks from detections."""
 
 import argparse
+import collections
 import logging
 import pickle
 import pprint
@@ -16,22 +17,28 @@ import pycocotools.mask as mask_util
 from utils.log import add_time_to_path, setup_logging
 
 
-def create_masks_sequence(predictions_dir, output_dir, threshold, mask_shape,
-                          duplicate_last_frame):
-    pickle_files = natsorted(
-        predictions_dir.glob('*.pickle'), alg=ns.PATH)
-    if not pickle_files:
-        logging.warn("Found no pickle files in %s; ignoring.", predictions_dir)
+def create_masks_sequence(dir_or_pickles, images_dir, output_dir,
+                          threshold, duplicate_last_frame):
+    if isinstance(dir_or_pickles, list):
+        pickle_files = dir_or_pickles
+        predictions_dir = pickle_files[0].parent
+    else:
+        predictions_dir = dir_or_pickles
+        pickle_files = natsorted(predictions_dir.glob('*.pickle'), alg=ns.PATH)
+        if not pickle_files:
+            logging.warn("Found no pickle files in %s; ignoring.",
+                         predictions_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     for frame_number, pickle_file in enumerate(pickle_files):
         filename = pickle_file.stem
         output_path = output_dir / (filename + '.png')
         if output_path.exists():
             continue
+        w, h = Image.open(images_dir / (filename + '.png')).size
+        mask_shape = (h, w)
 
         if not pickle_file.exists():
-            logging.warn("Couldn't find detections for "
-                         f"{pickle_file.relative_to(predictions_dir.parent)}")
+            logging.warn(f"Couldn't find detections for {pickle_file}")
             continue
 
         with open(pickle_file, 'rb') as f:
@@ -83,9 +90,9 @@ def main():
         help=('Contains subdirectory for each sequence, containing pickle '
               'files of detectron outputs for each frame.'))
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--images-dir', type=Path, required=True)
     parser.add_argument('--threshold', type=float, default=0.7)
-    parser.add_argument('--output-width', default=854, type=int)
-    parser.add_argument('--output-height', default=480, type=int)
+    parser.add_argument('--recursive', action='store_true')
     parser.add_argument(
         '--duplicate-last-frame',
         action='store_true',
@@ -104,20 +111,35 @@ def main():
         add_time_to_path(args.output_dir / (Path(__file__).name + '.log')))
     logging.info('Args: %s\n', pprint.pformat(vars(args)))
 
-    all_sequence_predictions = [
-        x for x in args.detections_root.iterdir() if x.is_dir()
-    ]
+    if args.recursive:
+        all_pickles = args.detections_root.rglob('*.pickle')
+        all_predictions = collections.defaultdict(list)
+        for x in all_pickles:
+            all_predictions[x.parent].append(x)
+    else:
+        all_predictions = {
+            args.detections_root: list(args.detections_root.glob('*.pickle'))
+        }
+        if not all_predictions[args.detections_root]:
+            raise ValueError("Found no .pickle files in --detections-root. "
+                             "Did you mean to specify --recursive?")
+    all_predictions = {
+        k: natsorted(v, alg=ns.PATH)
+        for k, v in all_predictions.items()
+    }
 
     # The DAVIS 2016 evaluation code really doesn't like any other files /
     # directories in the input directory, so we put the masks in a subdirectory
     # without the log file.
     masks_output_dir = args.output_dir / 'masks'
-    for sequence_predictions in tqdm(all_sequence_predictions):
+    for sequence_dir, sequence_predictions in tqdm(all_predictions.items()):
+        print(len(sequence_predictions))
+        relative_dir = sequence_dir.relative_to(args.detections_root)
         create_masks_sequence(
             sequence_predictions,
-            masks_output_dir / sequence_predictions.name,
+            args.images_dir / relative_dir,
+            masks_output_dir / relative_dir,
             args.threshold,
-            mask_shape=(args.output_height, args.output_width),
             duplicate_last_frame=args.duplicate_last_frame)
 
 
