@@ -283,7 +283,8 @@ def main():
         vis_dataset=args.vis_dataset,
         fps=args.fps,
         save_images=args.save_images,
-        filter_sequences=args.filter_sequences)
+        filter_sequences=args.filter_sequences,
+        duplicate_last_frame=False)
 
 
 if __name__ == "__main__":
