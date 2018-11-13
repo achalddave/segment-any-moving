@@ -239,25 +239,31 @@ def main():
             output_merged_sequence = output_merged / sequence
             output_merged_sequence.mkdir()
         merged_detections = {}
-        for file, detection in init_detections.items():
-            boxes = detection['boxes']
-            for category_boxes in boxes[1:]:
-                scores = category_boxes[:, 4]
-                scores[scores > args.score_init_min] += (
-                    tracking_params['score_init_min'])
-                category_boxes[:, 4] = scores
+        files = set(init_detections.keys()) | set(continue_detections.keys())
+        for file in files:
+            if file in init_detections:
+                init_detection = init_detections[file]
+                boxes = init_detection['boxes']
+                for category_boxes in boxes[1:]:
+                    scores = category_boxes[:, 4]
+                    scores[scores > args.score_init_min] += (
+                        tracking_params['score_init_min'])
+                    category_boxes[:, 4] = scores
 
-            detection = standardized_detections(detection)
-            continue_file_detection = standardized_detections(
-                continue_detections[file])
+                init_detection = standardized_detections(init_detection)
+                continue_file_detection = standardized_detections(
+                    continue_detections[file])
 
-            continue_nonoverlapping = filter_overlapping(
-                filter_scores(detection,
-                              tracking_params['score_continue_min']),
-                continue_file_detection,
-                overlap_threshold=args.remove_continue_overlap)
-            merged_detections[file] = merge_detections(
-                detection, continue_nonoverlapping)
+                continue_nonoverlapping = filter_overlapping(
+                    filter_scores(init_detection,
+                                  tracking_params['score_continue_min']),
+                    continue_file_detection,
+                    overlap_threshold=args.remove_continue_overlap)
+                merged_detections[file] = merge_detections(
+                    init_detection, continue_nonoverlapping)
+            else:
+                merged_detections[file] = standardized_detections(
+                    continue_detections[file])
             if args.save_merged_detections:
                 with open(output_merged_sequence / (file + '.pickle'),
                           'wb') as f:
