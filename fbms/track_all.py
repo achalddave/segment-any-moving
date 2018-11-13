@@ -15,7 +15,11 @@ from utils.fbms import utils as fbms_utils
 
 # TODO(achald): Optionally output numpy segmentations, to avoid extra
 # parse_dat_to_numpy.py run.
-def output_fbms_tracks(tracks, groundtruth_dir, output_file, progress=True):
+def output_fbms_tracks(tracks,
+                       groundtruth_dir,
+                       output_file,
+                       duplicate_last_frame=False,
+                       progress=True):
     # Map frame number to list of Detections
     detections_by_frame = collections.defaultdict(list)
     for track in tracks:
@@ -25,13 +29,21 @@ def output_fbms_tracks(tracks, groundtruth_dir, output_file, progress=True):
     detections_by_frame.default_factory = None
     assert len(detections_by_frame) > 0
 
-    groundtruth = fbms_utils.FbmsGroundtruth(Path(groundtruth_dir))
+    groundtruth_dir = Path(groundtruth_dir)
+    groundtruth = fbms_utils.FbmsGroundtruth(groundtruth_dir)
     segmentations = {}
     image_size = tracks[0].detections[0].image.shape[:2]
 
     for frame_offset, frame_path in groundtruth.frame_label_paths.items():
         segmentation = np.zeros(image_size)
+        if frame_offset == groundtruth.num_frames - 1 and duplicate_last_frame:
+            assert frame_offset not in detections_by_frame
+            detections_by_frame[frame_offset] = (
+                detections_by_frame[frame_offset-1])
         if frame_offset not in detections_by_frame:
+            logging.info(
+                'No detections found for frame %s in sequence %s, using '
+                'blank frame.', frame_offset, groundtruth_dir.parent.name)
             segmentations[frame_offset] = segmentation
             continue
         # Sort by ascending score; this is the order we will paint
@@ -60,7 +72,8 @@ def track_fbms(fbms_split_root,
                vis_dataset=None,
                fps=None,
                save_images=False,
-               filter_sequences=None):
+               filter_sequences=None,
+               duplicate_last_frame=False):
     """
     Args:
         fbms_split_root (Path)
@@ -97,7 +110,11 @@ def track_fbms(fbms_split_root,
 
         output_track = output_dir / (sequence + '.dat')
         output_fbms_tracks(
-            all_tracks, groundtruth_dir, output_track, progress=False)
+            all_tracks,
+            groundtruth_dir,
+            output_track,
+            duplicate_last_frame,
+            progress=False)
 
         if save_video or save_images:
             if save_video:
@@ -165,6 +182,7 @@ def main():
         choices=['coco', 'objectness'],
         help='Dataset to use for mapping label indices to names.')
     parser.add_argument('--filter-sequences', default=[], nargs='*', type=str)
+    parser.add_argument('--duplicate-last-frame', action='store_true')
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -211,7 +229,8 @@ def main():
         args.vis_dataset,
         args.fps,
         save_images=args.save_images,
-        filter_sequences=args.filter_sequences)
+        filter_sequences=args.filter_sequences,
+        duplicate_last_frame=args.duplicate_last_frame)
 
 
 if __name__ == "__main__":
