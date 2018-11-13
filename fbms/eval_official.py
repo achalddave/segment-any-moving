@@ -67,18 +67,28 @@ def main():
         if ('Could not find "Average region density" in the file!' in output
                 and len(args.predictions_dir) > 250):
             logging.info(
-                "\n"
-                "############\n"
+                "\n############\n"
                 "### NOTE ###\n"
                 "############\n"
                 "This may be due to the very long path to --predictions-dir. "
-                "The FBMS evaluation code only reads up to 300 characters per "
-                "line from all_tracks.txt. Either move your results to have "
-                "fewer characters in the path, or edit the "
-                "MoSegEvalAll_PR.cpp, run the following sed commands:\n"
-                "   sed -i'' -e 's/char dummy\[300\]/char dummy\[99999\]/' MoSegEvalAll_PR.cpp\n"
-                "   sed -i'' -e 's/aResult.getline(dummy,300);/aResult.getline(dummy,99999);/' MoSegEvalAll_PR.cpp"
-            )
+                "Either move your results to have fewer characters in the "
+                "path, OR use the modified FBMS evaluation code at "
+                "<https://github.com/achalddave/fbms-evaluation>, or apply "
+                "the patch at "
+                "https://github.com/achalddave/fbms-evaluation/commit/e7df914"
+                " to your copy of the evaluation code.")
+        elif ('Could not find "Average Precision, Recall, F-measure" '
+                'in the file!' in output):
+            logging.info(
+                "\n############\n"
+                "### NOTE ###\n"
+                "############\n"
+                "This may be due to a very long output Numbers file from "
+                "MoSegEvalPR. Try using the modified FBMS evaluation code "
+                "at <https://github.com/achalddave/fbms-evaluation>, or "
+                "apply the patch at "
+                "https://github.com/achalddave/fbms-evaluation/commit/7fdff53f"
+                " to your copy of the evaluation code.")
         import sys
         sys.exit(e)
 
