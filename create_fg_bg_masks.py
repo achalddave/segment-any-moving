@@ -18,7 +18,7 @@ from utils.log import add_time_to_path, setup_logging
 
 
 def create_masks_sequence(dir_or_pickles, images_dir, output_dir,
-                          threshold, duplicate_last_frame):
+                          threshold, extension, duplicate_last_frame):
     if isinstance(dir_or_pickles, list):
         pickle_files = dir_or_pickles
         predictions_dir = pickle_files[0].parent
@@ -34,7 +34,7 @@ def create_masks_sequence(dir_or_pickles, images_dir, output_dir,
         output_path = output_dir / (filename + '.png')
         if output_path.exists():
             continue
-        w, h = Image.open(images_dir / (filename + '.png')).size
+        w, h = Image.open(images_dir / (filename + extension)).size
         mask_shape = (h, w)
 
         if not pickle_file.exists():
@@ -94,6 +94,10 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.7)
     parser.add_argument('--recursive', action='store_true')
     parser.add_argument(
+        '--extension',
+        default='.png',
+        help='Extension for images in --images-dir')
+    parser.add_argument(
         '--duplicate-last-frame',
         action='store_true',
         help=('Whether to duplicate the last frame. This is useful if we '
@@ -140,6 +144,7 @@ def main():
             args.images_dir / relative_dir,
             masks_output_dir / relative_dir,
             args.threshold,
+            args.extension,
             duplicate_last_frame=args.duplicate_last_frame)
 
 
