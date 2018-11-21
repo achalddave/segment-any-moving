@@ -65,7 +65,13 @@ def get_class_string(class_index, score, class_names):
     return class_text + ' {:0.2f}'.format(score).lstrip('0')
 
 
-def vis_mask(img, mask, color, alpha=0.4, show_border=True, border_thick=1):
+def vis_mask(img,
+             mask,
+             color,
+             alpha=0.4,
+             show_border=True,
+             border_thick=1,
+             border_color=None):
     """Visualizes a single binary mask."""
 
     img = img.astype(np.float32)
@@ -77,9 +83,11 @@ def vis_mask(img, mask, color, alpha=0.4, show_border=True, border_thick=1):
     if show_border:
         _, contours, _ = cv2.findContours(
             mask.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-        if not isinstance(color, list):
-            color = color.tolist()
-        cv2.drawContours(img, contours, -1, color, border_thick,
+        if border_color is None:
+            border_color = color
+        if not isinstance(border_color, list):
+            border_color = border_color.tolist()
+        cv2.drawContours(img, contours, -1, border_color, border_thick,
                          cv2.LINE_AA)
 
     return img.astype(np.uint8)

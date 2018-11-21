@@ -734,8 +734,9 @@ def visualize_tracks(tracks,
 
     if output_video is not None:
         images = []
-    for timestamp, image_path in enumerate(
-            tqdm(frame_paths, disable=not progress)):
+
+    def visualize_image(timestamp):
+        image_path = frame_paths[timestamp]
         image = cv2.imread(str(image_path))
         image = image[:, :, ::-1]  # BGR -> RGB
         new_image = visualize_detections(
@@ -744,25 +745,36 @@ def visualize_tracks(tracks,
             dataset=dataset,
             tracking_params=tracking_params)
 
-        if output_video is not None:
-            images.append(new_image)
+        return new_image
 
-        if output_dir is not None:
-            new_image = PIL.Image.fromarray(new_image)
-            new_image.save(output_dir / (image_path.name + '.png'))
+    if output_video is None:
+        assert output_dir is not None
+        for t, image_path in tqdm(
+                enumerate(frame_paths), disable=not progress):
+            image = PIL.Image.fromarray(visualize_image(t))
+            image.save(output_dir / (image_path.name + '.png'))
+        return
 
-    if output_video is not None:
-        clip = ImageSequenceClip(images, fps=output_video_fps)
-        # Some videos don't play in Firefox and QuickTime if '-pix_fmt yuv420p'
-        # is not specified, and '-pix_fmt yuv420p' requires that the dimensions
-        # be even, so we need the '-vf scale=...' filter.
-        clip.write_videofile(
+    from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
+    # Some videos don't play in Firefox and QuickTime if '-pix_fmt yuv420p' is
+    # not specified, and '-pix_fmt yuv420p' requires that the dimensions be
+    # even, so we need the '-vf scale=...' filter.
+    ffmpeg_params = [
+        '-vf', "scale=trunc(iw/2)*2:trunc(ih/2)*2", '-pix_fmt', 'yuv420p'
+    ]
+    height, width, _ = cv2.imread(str(frame_paths[0])).shape
+    with FFMPEG_VideoWriter(
             str(output_video),
-            verbose=progress,
-            ffmpeg_params=[
-                '-pix_fmt', 'yuv420p', '-vf',
-                'scale=trunc(iw/2)*2:trunc(ih/2)*2'
-            ])
+            size=(width, height),
+            fps=output_video_fps,
+            ffmpeg_params=ffmpeg_params) as writer:
+        for t, image_path in enumerate(
+                tqdm(frame_paths, disable=not progress)):
+            visualized = visualize_image(t)
+            if output_dir is not None:
+                image = PIL.Image.fromarray(visualize_image(t))
+                image.save(output_dir / (image_path.name + '.png'))
+            writer.write_frame(visualized)
 
 
 def create_tracking_parser(suppress_args=None):
@@ -923,11 +935,12 @@ def main():
         '--dataset', default='coco', choices=['coco', 'objectness'])
     parser.add_argument(
         '--filename-format',
-        choices=['frame', 'sequence_frame', 'fbms'],
+        choices=['frame', 'sequence_frame', 'sequence-frame', 'fbms'],
         default='frame',
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
-              '"sequence_frame": frame number is separated by an underscore'
+              '"sequence_frame": frame number is separated by an underscore, '
+              '"sequence-frame": frame number is separated by a dash, '
               '"fbms": assume fbms style frame numbers'))
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
@@ -942,13 +955,15 @@ def main():
             'be specified.')
 
     if args.output_track_file is not None:
-        output_log_file = (
-            os.path.splitext(args.output_track_file)[0] + '-tracker.log')
+        output_log_file = args.output_track_file.with_name(
+            args.output_track_file.stem + '-tracker.log')
     elif args.output_video is not None:
-        output_log_file = (
-            os.path.splitext(args.output_video)[0] + '-tracker.log')
+        output_log_file = args.output_video.with_name(args.output_video.stem +
+                                                      '-tracker.log')
     elif args.output_dir is not None:
-        output_log_file = os.path.join(args.output_dir, 'tracker.log')
+        output_log_file = args.output_dir / 'tracker.log'
+
+    output_log_file.parent.mkdir(exist_ok=True, parents=True)
     setup_logging(output_log_file)
     logging.info('Printing source code to logging file')
     with open(__file__, 'r') as f:
@@ -968,6 +983,9 @@ def main():
 
     if args.filename_format == 'fbms':
         from utils.fbms.utils import get_framenumber
+    elif args.filename_format == 'sequence-frame':
+        def get_framenumber(x):
+            return int(x.split('-')[-1])
     elif args.filename_format == 'sequence_frame':
         def get_framenumber(x):
             return int(x.split('_')[-1])
@@ -978,14 +996,14 @@ def main():
             'Unknown --filename-format: %s' % args.filename_format)
 
     detection_results = load_detectron_pickles(
-        args.detectron_input, frame_parser=get_framenumber)
+        args.detectron_dir, frame_parser=get_framenumber)
     frames = sorted(detection_results.keys(), key=get_framenumber)
 
     should_visualize = (args.output_dir is not None
                         or args.output_video is not None)
     should_output_mot = args.output_track_file is not None
     if should_output_mot:
-        logging.info('Outputing MOT style tracks to %s',
+        logging.info('Will output MOT style tracks to %s',
                      args.output_track_file)
 
     label_list = get_classes(args.dataset)
@@ -1002,7 +1020,7 @@ def main():
     if should_output_mot:
         logging.info('Outputting MOT style tracks')
         output_mot_tracks(all_tracks, label_list,
-                          [get_framenumber(x[1]) for x in frames],
+                          [get_framenumber(x) for x in frames],
                           args.output_track_file)
         logging.info('Output tracks to %s' % args.output_track_file)
 
@@ -1010,7 +1028,7 @@ def main():
         logging.info('Visualizing tracks')
         visualize_tracks(all_tracks, frame_paths, args.dataset,
                          tracking_params, args.output_dir, args.output_video,
-                         args.output_video_fps)
+                         args.output_video_fps, progress=True)
 
 
 if __name__ == "__main__":
