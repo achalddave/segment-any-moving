@@ -148,7 +148,7 @@ def main():
     parser.add_argument(
         '--remove-continue-overlap',
         type=float,
-        default=0.8,
+        default=0.1,
         help=('Remove detections from --continue-detections-dir if they '
               'overlap more than this threshold with a detection from '
               '--init-detections-dir.'))
@@ -163,7 +163,7 @@ def main():
     parser.add_argument(
         '--score-init-min',
         type=float,
-        default=0.7,
+        default=0.9,
         help=('Detection confidence threshold for starting a new track from '
               '--init-detections-dir detections.'))
     parser.add_argument(
