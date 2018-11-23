@@ -504,7 +504,8 @@ def visualize_detections(image,
                          detections,
                          dataset,
                          tracking_params,
-                         box_alpha=0.7,
+                         vis_bbox=False,
+                         vis_label=True,
                          dpi=200):
     if not detections:
         return image
@@ -515,7 +516,7 @@ def visualize_detections(image,
     areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
     sorted_inds = np.argsort(-areas)
 
-    colors = colormap()
+    colors = colormap(rgb=True, lighten=True)
 
     image = image.astype(dtype=np.uint8)
     for i in sorted_inds:
@@ -525,8 +526,10 @@ def visualize_detections(image,
         color = [int(x) for x in colors[track_friendly_id % len(colors), :3]]
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
-        cx, cy = detection.compute_center_box()
-        image = vis.vis_bbox(image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
+        if vis_bbox:
+            cx, cy = detection.compute_center_box()
+            image = vis.vis_bbox(
+                image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
 
         # Draw spatial distance threshold
         if tracking_params['draw_spatial_threshold']:
@@ -542,14 +545,17 @@ def visualize_detections(image,
             image,
             detection.decoded_mask(),
             color=color,
-            alpha=0.1,
+            alpha=0.5,
+            border_alpha=0.5,
+            border_color=[255, 255, 255],
             border_thick=3)
 
-        label_str = '({track}) {label}: {score}'.format(
-            track=track_friendly_id,
-            label=label_list[detection.label],
-            score='{:0.2f}'.format(detection.score).lstrip('0'))
-        image = vis.vis_class(image, (x0, y0 - 2), label_str)
+        if vis_label:
+            label_str = '({track}) {label}: {score}'.format(
+                track=track_friendly_id,
+                label=label_list[detection.label],
+                score='{:0.2f}'.format(detection.score).lstrip('0'))
+            image = vis.vis_class(image, (x0, y0 - 2), label_str)
 
     return image
 
@@ -718,6 +724,8 @@ def visualize_tracks(tracks,
                      output_dir=None,
                      output_video=None,
                      output_video_fps=10,
+                     vis_bbox=False,
+                     vis_label=False,
                      progress=False):
     """
     Args:
@@ -743,7 +751,9 @@ def visualize_tracks(tracks,
             image,
             detections_by_frame[timestamp],
             dataset=dataset,
-            tracking_params=tracking_params)
+            tracking_params=tracking_params,
+            vis_bbox=vis_bbox,
+            vis_label=vis_label)
 
         return new_image
 
