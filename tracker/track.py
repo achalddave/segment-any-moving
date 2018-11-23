@@ -579,9 +579,15 @@ def track(frame_paths,
 
     # detections[i] contains list of Detections for frame_paths[i]
     detections = []
+    dummy_image = None
     for t, (frame_path, image_results) in enumerate(
             zip(frame_paths, frame_detections)):
-        image = cv2.imread(str(frame_path))[:, :, ::-1]  # BGR -> RGB
+        if tracking_params['appearance_feature'] == 'none':
+            if dummy_image is None:
+                dummy_image = np.zeros_like(cv2.imread(str(frame_path)))
+            image = dummy_image
+        else:
+            image = cv2.imread(str(frame_path))[:, :, ::-1]  # BGR -> RGB
         boxes, masks, _, labels = vis.convert_from_cls_format(
             image_results['boxes'], image_results['segmentations'],
             image_results['keypoints'])
@@ -739,9 +745,6 @@ def visualize_tracks(tracks,
     for track in tracks:
         for detection in track.detections:
             detections_by_frame[detection.timestamp].append(detection)
-
-    if output_video is not None:
-        images = []
 
     def visualize_image(timestamp):
         image_path = frame_paths[timestamp]
@@ -947,8 +950,6 @@ def track_and_visualize(detection_results,
     frame_paths = [
         images_dir / (frame + frame_extension) for frame in frames
     ]
-    # To filter tracks to only focus on people, add
-    #   filter_label=label_list.index('person'))
     all_tracks = track(frame_paths,
                        [detection_results[frame] for frame in frames],
                        tracking_params)
