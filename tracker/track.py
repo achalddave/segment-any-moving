@@ -923,6 +923,56 @@ def load_detectron_pickles(detectron_input, frame_parser):
     return detection_results
 
 
+def track_and_visualize(detection_results,
+                        images_dir,
+                        tracking_params,
+                        get_framenumber,
+                        frame_extension,
+                        vis_dataset=None,
+                        output_images_dir=None,
+                        output_video=None,
+                        output_video_fps=None,
+                        output_track_file=None):
+    frames = sorted(detection_results.keys(), key=get_framenumber)
+
+    should_visualize = (output_images_dir is not None
+                        or output_video is not None)
+    should_output_mot = output_track_file is not None
+    if should_output_mot:
+        logging.info('Will output MOT style tracks to %s',
+                     output_track_file)
+
+    label_list = get_classes(vis_dataset)
+
+    frame_paths = [
+        images_dir / (frame + frame_extension) for frame in frames
+    ]
+    # To filter tracks to only focus on people, add
+    #   filter_label=label_list.index('person'))
+    all_tracks = track(frame_paths,
+                       [detection_results[frame] for frame in frames],
+                       tracking_params)
+
+    if should_output_mot:
+        logging.info('Outputting MOT style tracks')
+        output_mot_tracks(all_tracks, label_list,
+                          [get_framenumber(x) for x in frames],
+                          output_track_file)
+        logging.info('Output tracks to %s' % output_track_file)
+
+    if should_visualize:
+        logging.info('Visualizing tracks')
+        visualize_tracks(
+            all_tracks,
+            frame_paths,
+            vis_dataset,
+            tracking_params,
+            output_images_dir,
+            output_video,
+            output_video_fps,
+            progress=True)
+
+
 def main():
     tracking_parser = create_tracking_parser()
 
@@ -933,7 +983,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--detectron-dir', type=Path, required=True)
     parser.add_argument('--images-dir', type=Path, required=True)
-    parser.add_argument('--output-dir', type=Path)
+    parser.add_argument('--output-images-dir', type=Path)
     parser.add_argument('--output-video', type=Path)
     parser.add_argument('--output-video-fps', default=30, type=float)
     parser.add_argument(
@@ -958,7 +1008,7 @@ def main():
 
     tracking_params = vars(tracking_params)
 
-    assert (args.output_dir is not None
+    assert (args.output_images_dir is not None
             or args.output_video is not None
             or args.output_track_file is not None), (
             'One of --output-dir, --output-video, or --output-track-file must '
@@ -970,8 +1020,8 @@ def main():
     elif args.output_video is not None:
         output_log_file = args.output_video.with_name(args.output_video.stem +
                                                       '-tracker.log')
-    elif args.output_dir is not None:
-        output_log_file = args.output_dir / 'tracker.log'
+    elif args.output_images_dir is not None:
+        output_log_file = args.output_images_dir / 'tracker.log'
 
     output_log_file.parent.mkdir(exist_ok=True, parents=True)
     setup_logging(output_log_file)
@@ -1007,38 +1057,16 @@ def main():
 
     detection_results = load_detectron_pickles(
         args.detectron_dir, frame_parser=get_framenumber)
-    frames = sorted(detection_results.keys(), key=get_framenumber)
-
-    should_visualize = (args.output_dir is not None
-                        or args.output_video is not None)
-    should_output_mot = args.output_track_file is not None
-    if should_output_mot:
-        logging.info('Will output MOT style tracks to %s',
-                     args.output_track_file)
-
-    label_list = get_classes(args.dataset)
-
-    frame_paths = [
-        args.images_dir / (frame + args.extension) for frame in frames
-    ]
-    # To filter tracks to only focus on people, add
-    #   filter_label=label_list.index('person'))
-    all_tracks = track(frame_paths,
-                       [detection_results[frame] for frame in frames],
-                       tracking_params)
-
-    if should_output_mot:
-        logging.info('Outputting MOT style tracks')
-        output_mot_tracks(all_tracks, label_list,
-                          [get_framenumber(x) for x in frames],
-                          args.output_track_file)
-        logging.info('Output tracks to %s' % args.output_track_file)
-
-    if should_visualize:
-        logging.info('Visualizing tracks')
-        visualize_tracks(all_tracks, frame_paths, args.dataset,
-                         tracking_params, args.output_dir, args.output_video,
-                         args.output_video_fps, progress=True)
+    track_and_visualize(detection_results,
+                        args.images_dir,
+                        tracking_params,
+                        get_framenumber,
+                        args.extension,
+                        vis_dataset=args.dataset,
+                        output_images_dir=args.output_images_dir,
+                        output_video=args.output_video,
+                        output_video_fps=args.output_video_fps,
+                        output_track_file=args.output_track_file)
 
 
 if __name__ == "__main__":
