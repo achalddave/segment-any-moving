@@ -94,8 +94,8 @@ def vis_mask(img,
                              border_thick, cv2.LINE_AA)
             img = (1 - border_alpha) * img + border_alpha * with_border
         else:
-        cv2.drawContours(img, contours, -1, border_color, border_thick,
-                         cv2.LINE_AA)
+            cv2.drawContours(img, contours, -1, border_color, border_thick,
+                             cv2.LINE_AA)
 
     return img.astype(np.uint8)
 
