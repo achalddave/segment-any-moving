@@ -623,8 +623,11 @@ def track(frame_paths,
         if not forward:
             timestamps = reversed(timestamps)
 
-        for t in tqdm(timestamps, disable=not progress,
-                      desc='track ' + direction):
+        for t in tqdm(
+                timestamps,
+                disable=not progress,
+                total=len(frame_paths),
+                desc='track ' + direction):
             frame_path = frame_paths[t]
             frame_detections = [d for d in detections[t] if not d.tracked()]
             if not frame_detections:
