@@ -57,7 +57,8 @@ def main():
     ppm_frames = []
     for frame in frames:
         ppm_frame = args.output_dir / (frame.stem + '.ppm')
-        Image.open(frame).save(ppm_frame)
+        if not ppm_frame.exists():
+            Image.open(frame).save(ppm_frame)
         ppm_frames.append(ppm_frame)
 
     video_name = args.frames_dir.parent.name
