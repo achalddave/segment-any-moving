@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 import scipy.stats
 import scipy.optimize
+from PIL import Image
 from tqdm import tqdm
 
 import utils.fbms.utils as fbms_utils
@@ -43,6 +44,95 @@ from utils.misc import simple_table
 
 def compute_f_measure(precision, recall):
     return 2 * precision * recall / (max(precision + recall, 1e-10))
+
+
+def eval_custom(groundtruth, prediction, background_prediction_id):
+    groundtruth_track_ids = set(np.unique(groundtruth))
+    predicted_track_ids = set(np.unique(prediction))
+
+    predictions_by_id = {
+        p: (prediction == p) for p in predicted_track_ids
+    }
+    groundtruth_by_id = {
+        g: (groundtruth == g) for g in groundtruth_track_ids
+    }
+
+    num_predicted = {
+        p: id_prediction.sum()
+        for p, id_prediction in predictions_by_id.items()
+    }
+    num_groundtruth = {
+        g: id_groundtruth.sum()
+        for g, id_groundtruth in groundtruth_by_id.items()
+    }
+
+    if background_prediction_id is None:  # Infer background id
+        background_prediction_id = max(
+            num_predicted.items(), key=lambda x: x[1])[0]
+
+    groundtruth_track_ids.remove(0)
+    predicted_track_ids.remove(background_prediction_id)
+
+    groundtruth_track_ids = sorted(groundtruth_track_ids)
+    predicted_track_ids = sorted(predicted_track_ids)
+
+    f_measures = np.zeros((len(groundtruth_track_ids),
+                           len(predicted_track_ids)))
+    intersections = {}
+    for g, groundtruth_id in enumerate(groundtruth_track_ids):
+        track_groundtruth = groundtruth_by_id[groundtruth_id]
+        for p, predicted_id in enumerate(predicted_track_ids):
+            track_prediction = predictions_by_id[predicted_id]
+            intersection = (track_groundtruth & track_prediction).sum()
+            intersections[(groundtruth_id, predicted_id)] = intersection
+            precision = intersection / num_predicted[predicted_id]
+            recall = intersection / num_groundtruth[groundtruth_id]
+            f_measures[g, p] = compute_f_measure(precision, recall)
+    # Tuple of (groundtruth_indices, predicted_indices)
+    assignment = scipy.optimize.linear_sum_assignment(-f_measures)
+    # List of (groundtruth_track_id, predicted_track_id) tuples
+    assignment = [(groundtruth_track_ids[assignment[0][i]],
+                   predicted_track_ids[assignment[1][i]])
+                  for i in range(len(assignment[0]))]
+
+    num_predicted = (prediction != background_prediction_id).sum()
+    num_groundtruth = (groundtruth != 0).sum()
+    num_correct = sum(intersections[(g, p)] for g, p in assignment)
+    precision = 100 * num_correct / num_predicted
+    recall = 100 * num_correct / num_groundtruth
+    f_measure = compute_f_measure(precision, recall)
+    return precision, recall, f_measure
+
+
+def load_fbms_groundtruth(groundtruth_dir, include_unknown_labels):
+    """Load official FBMS groundtruth.
+
+    Returns:
+        groundtruth (dict): Maps frame to numpy array of groundtruth.
+    """
+    groundtruth_info = fbms_utils.FbmsGroundtruth(groundtruth_dir)
+    # Maps frame index to (height, width)
+    return groundtruth_info.frame_labels(include_unknown_labels)
+
+
+def load_fbms_groundtruth_3d(groundtruth_dir):
+    """Return mapping from frame to numpy array of groundtruth."""
+    groundtruth_pngs = groundtruth_dir.glob('*.png')
+    sequence = groundtruth_dir.parent.name
+    output = {}
+    for png_path in groundtruth_pngs:
+        raw_frame = int(png_path.stem.split('_gt')[0])
+        frame = fbms_utils.get_frameoffset(sequence, raw_frame)
+        output[frame] = np.array(Image.open(png_path))
+        if output[frame].ndim != 2 and output[frame].shape[-1] != 1:
+            if len(np.unique(output[frame][:, :, 1]) == 1):
+                # Certain sequences have groundtruth png's with a fixed alpha
+                # channel; strip it.
+                output[frame] = output[frame][:, :, 0]
+            else:
+                raise ValueError(
+                    'Got multi channel image for groundtruth %s' % png_path)
+    return output
 
 
 def main():
@@ -74,13 +164,21 @@ def main():
         action='store_true',
         help=('Whether to include labels in ppm files that are not in '
               'groundtruth .dat file when evaluating. See '
-              'FbmsGroundtruth.frame_labels method for more details.'))
+              'FbmsGroundtruth.frame_labels method for more details. Invalid '
+              'if --3d-motion-eval is specified.'))
+    parser.add_argument(
+        '--eval-3d-motion',
+        action='store_true',
+        help='Evaluate using groundtruth from FBMS-3D motion.')
     args = parser.parse_args()
 
     log_path = args.predictions_dir / (Path(__file__).name + '.log')
     if args.include_unknown_labels:
         log_path = args.predictions_dir / (
             Path(__file__).name + '_with-unknown.log')
+    elif args.eval_3d_motion:
+        log_path = args.predictions_dir / (
+            Path(__file__).name + '_3d-motion.log')
     else:
         log_path = args.predictions_dir / (Path(__file__).name + '.log')
     log_path = log_utils.add_time_to_path(log_path)
@@ -99,6 +197,10 @@ def main():
     else:
         background_prediction_id = None
 
+    if args.eval_3d_motion and args.include_unknown_labels:
+        raise ValueError('--include-unknown-labels cannot be specified if '
+                         '--motion-3d-eval is used.')
+
     prediction_paths = sorted(x for x in args.predictions_dir.iterdir()
                               if x.name.endswith(args.npy_extension))
     if not prediction_paths:
@@ -115,80 +217,25 @@ def main():
     sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
     for groundtruth_path, prediction_path in zip(
             tqdm(groundtruth_paths), prediction_paths):
-        groundtruth_info = fbms_utils.FbmsGroundtruth(groundtruth_path)
+        if args.eval_3d_motion:
+            groundtruth_dict = load_fbms_groundtruth_3d(groundtruth_path)
+        else:
+            groundtruth_dict = load_fbms_groundtruth(
+                groundtruth_path, args.include_unknown_labels)
 
         # (num_frames, height, width)
         prediction_all_frames = np.load(prediction_path)
 
-        # Maps frame index to (height, width)
-        groundtruth_dict = groundtruth_info.frame_labels(
-            args.include_unknown_labels)
-
+        h, w = prediction_all_frames.shape[1:]
         num_labeled_frames = len(groundtruth_dict)
-        groundtruth = np.zeros((
-            num_labeled_frames, groundtruth_info.image_height,
-            groundtruth_info.image_width))
+        groundtruth = np.zeros((num_labeled_frames, h, w))
         prediction = np.zeros_like(groundtruth)
-
         for f, frame in enumerate(sorted(groundtruth_dict.keys())):
             groundtruth[f] = groundtruth_dict[frame]
             prediction[f] = prediction_all_frames[frame]
 
-        groundtruth_track_ids = set(np.unique(groundtruth))
-        predicted_track_ids = set(np.unique(prediction))
-
-        predictions_by_id = {
-            p: (prediction == p) for p in predicted_track_ids
-        }
-        groundtruth_by_id = {
-            g: (groundtruth == g) for g in groundtruth_track_ids
-        }
-
-        num_predicted = {
-            p: id_prediction.sum()
-            for p, id_prediction in predictions_by_id.items()
-        }
-        num_groundtruth = {
-            g: id_groundtruth.sum()
-            for g, id_groundtruth in groundtruth_by_id.items()
-        }
-
-        if background_prediction_id is None:  # Infer background id
-            background_prediction_id = max(
-                num_predicted.items(), key=lambda x: x[1])[0]
-
-        groundtruth_track_ids.remove(0)
-        predicted_track_ids.remove(background_prediction_id)
-
-        groundtruth_track_ids = sorted(groundtruth_track_ids)
-        predicted_track_ids = sorted(predicted_track_ids)
-
-        f_measures = np.zeros((len(groundtruth_track_ids),
-                               len(predicted_track_ids)))
-        intersections = {}
-        for g, groundtruth_id in enumerate(groundtruth_track_ids):
-            track_groundtruth = groundtruth_by_id[groundtruth_id]
-            for p, predicted_id in enumerate(predicted_track_ids):
-                track_prediction = predictions_by_id[predicted_id]
-                intersection = (track_groundtruth & track_prediction).sum()
-                intersections[(groundtruth_id, predicted_id)] = intersection
-                precision = intersection / num_predicted[predicted_id]
-                recall = intersection / num_groundtruth[groundtruth_id]
-                f_measures[g, p] = compute_f_measure(precision, recall)
-        # Tuple of (groundtruth_indices, predicted_indices)
-        assignment = scipy.optimize.linear_sum_assignment(-f_measures)
-        # List of (groundtruth_track_id, predicted_track_id) tuples
-        assignment = [(groundtruth_track_ids[assignment[0][i]],
-                       predicted_track_ids[assignment[1][i]])
-                      for i in range(len(assignment[0]))]
-
-        num_predicted = (prediction != background_prediction_id).sum()
-        num_groundtruth = (groundtruth != 0).sum()
-        num_correct = sum(intersections[(g, p)] for g, p in assignment)
-
-        precision = 100 * num_correct / num_predicted
-        recall = 100 * num_correct / num_groundtruth
-        f_measure = compute_f_measure(precision, recall)
+        precision, recall, f_measure = eval_custom(groundtruth, prediction,
+                                                   background_prediction_id)
         sequence_metrics.append((groundtruth_path.parent.stem, precision,
                                  recall, f_measure))
 
