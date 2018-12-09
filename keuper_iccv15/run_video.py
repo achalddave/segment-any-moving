@@ -54,6 +54,9 @@ def main():
             args.output_dir / (Path(__file__).name + '.log')))
     logging.info('Args:\n%s', vars(args))
 
+    from natsort import natsorted, ns
+    frames = natsorted(frames, alg=ns.PATH)
+
     ppm_frames = []
     for frame in frames:
         ppm_frame = args.output_dir / (frame.stem + '.ppm')
