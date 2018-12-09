@@ -45,6 +45,8 @@ def main():
     args = parser.parse_args()
 
     frames = list(args.frames_dir.glob('*' + args.extension))
+    if not frames:
+        raise ValueError('Found no images with extension %s.' % args.extension)
     args.output_dir.mkdir(exist_ok=True, parents=True)
 
     log_utils.setup_logging(
