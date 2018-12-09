@@ -70,6 +70,7 @@ def vis_mask(img,
              color,
              alpha=0.4,
              show_border=True,
+             border_alpha=0.5,
              border_thick=1,
              border_color=None):
     """Visualizes a single binary mask."""
@@ -87,6 +88,12 @@ def vis_mask(img,
             border_color = color
         if not isinstance(border_color, list):
             border_color = border_color.tolist()
+        if border_alpha < 1:
+            with_border = img.copy()
+            cv2.drawContours(with_border, contours, -1, border_color,
+                             border_thick, cv2.LINE_AA)
+            img = (1 - border_alpha) * img + border_alpha * with_border
+        else:
         cv2.drawContours(img, contours, -1, border_color, border_thick,
                          cv2.LINE_AA)
 
