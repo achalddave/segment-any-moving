@@ -27,6 +27,8 @@ def main():
         for f in range(num_frames):
             frame_mask = all_frames_mask[f]
             ids = sorted(np.unique(frame_mask))
+            if len(ids) == 1:
+                continue
             masks = [frame_mask == object_id for object_id in ids]
             # Sort masks by area
             ids_and_masks = sorted(zip(ids, masks), key=lambda x: x[1].sum())
