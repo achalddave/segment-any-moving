@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def colormap(rgb=False):
+def colormap(rgb=False, lighten=True):
     """Copied from Detectron codebase."""
     color_list = np.array(
         [
@@ -86,7 +86,13 @@ def colormap(rgb=False):
             1.000, 1.000, 1.000
         ]
     ).astype(np.float32)
-    color_list = color_list.reshape((-1, 3)) * 255
+    color_list = color_list.reshape((-1, 3))
     if not rgb:
         color_list = color_list[:, ::-1]
-    return color_list
+
+    if lighten:
+        # Make all the colors a little lighter / whiter. This is copied
+        # from the detectron visualization code (search for 'w_ratio').
+        w_ratio = 0.4
+        color_list = (color_list * (1 - w_ratio) + w_ratio)
+    return color_list * 255
