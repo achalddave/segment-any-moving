@@ -136,6 +136,8 @@ def track_fbms(fbms_split_root,
                 output_dir=images_dir,
                 output_video=output_video,
                 output_video_fps=fps,
+                vis_bbox=False,
+                vis_label=False,
                 progress=False)
 
         all_shot_paths.append(
