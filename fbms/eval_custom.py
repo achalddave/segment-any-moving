@@ -38,25 +38,11 @@ from tqdm import tqdm
 
 import utils.fbms.utils as fbms_utils
 import utils.log as log_utils
+from utils.misc import simple_table
 
 
 def compute_f_measure(precision, recall):
     return 2 * precision * recall / (max(precision + recall, 1e-10))
-
-
-def simple_table(rows):
-    lengths = [
-        max(len(row[i]) for row in rows) + 1 for i in range(len(rows[0]))
-    ]
-    row_format = ' '.join(('{:<%s}' % length) for length in lengths[:-1])
-    row_format += ' {}'  # The last column can maintain its length.
-
-    output = ''
-    for i, row in enumerate(rows):
-        if i > 0:
-            output += '\n'
-        output += row_format.format(*row)
-    return output
 
 
 def main():
