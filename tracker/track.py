@@ -171,6 +171,11 @@ class Detection():
         return (self._cached_values['mask_histogram'],
                 self._cached_values['mask_histogram_edges'])
 
+    def normalized_box(self):
+        x0, y0, x1, y1 = self.box
+        h, w, _ = self.image.shape
+        return [x0 / w, y0 / h, x1 / w, y1 / h]
+
     def __str__(self):
         output = (
             '{'
