@@ -357,7 +357,8 @@ def filter_appearance(tracks,
         if not candidates[track.id]:
             continue
         appearance_distances = {}
-        track_detection = track.nearest_timestamp(candidates[0], backward)
+        track_detection = track.nearest_detection(
+            candidates[track.id][0].timestamp, backward)
         for i, detection in enumerate(candidates[track.id]):
             if appearance_feature == 'mask':
                 appearance_distances[i] = cosine(track_detection.mask_feature,
