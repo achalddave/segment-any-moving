@@ -132,7 +132,7 @@ def main():
         Parallel(n_jobs=8)(
             delayed(convert_flo)(*task) for task in tasks)
     else:
-        for flo_dir in flo_paths_by_dir:
+        for flo_dir in tqdm(flo_paths_by_dir):
             convert_flo_pavel_matlab(flo_dir, flo_output_dirs[flo_dir])
 
 
