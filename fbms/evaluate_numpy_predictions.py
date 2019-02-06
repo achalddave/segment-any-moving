@@ -49,6 +49,7 @@ def load_numpy_annotations(input_dir, groundtruth):
                 ew=image['width'], eh=image['height'],
                 sw=annotation.shape[1], sh=annotation.shape[0]))
         image_to_predictions_numpy[image['id']] = annotation
+    return image_to_predictions_numpy
 
 
 def main():
