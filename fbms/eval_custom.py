@@ -135,6 +135,14 @@ def load_fbms_groundtruth_3d(groundtruth_dir):
     return output
 
 
+def load_davis_groundtruth(groundtruth_dir):
+    output = {}
+    frames = sorted(groundtruth_dir.glob('*.png'), key=lambda x: int(x.stem))
+    for frame_path in frames:
+        output[int(frame_path.stem)] = np.array(Image.open(frame_path))
+    return output
+
+
 def main():
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
@@ -165,20 +173,33 @@ def main():
         help=('Whether to include labels in ppm files that are not in '
               'groundtruth .dat file when evaluating. See '
               'FbmsGroundtruth.frame_labels method for more details. Invalid '
-              'if --3d-motion-eval is specified.'))
+              'if --eval-3d-motion or --eval-davis is specified.'))
     parser.add_argument(
         '--eval-3d-motion',
         action='store_true',
         help='Evaluate using groundtruth from FBMS-3D motion.')
+    parser.add_argument(
+        '--eval-davis',
+        action='store_true',
+        help=('Assume --groundtruth-dir points to a DAVIS annotations '
+              'directory, and evaluate using DAVIS groundtruth.'))
     args = parser.parse_args()
 
     log_path = args.predictions_dir / (Path(__file__).name + '.log')
+    assert (sum([
+        args.include_unknown_labels, args.eval_3d_motion, args.eval_davis
+    ]) <= 1), (
+        '--include-unknown-labels, --eval-3d-motion and --eval-davis are '
+        'mutually exclusive.')
+
     if args.include_unknown_labels:
         log_path = args.predictions_dir / (
             Path(__file__).name + '_with-unknown.log')
     elif args.eval_3d_motion:
         log_path = args.predictions_dir / (
             Path(__file__).name + '_3d-motion.log')
+    elif args.eval_davis:
+        log_path = args.predictions_dir / (Path(__file__).name + '_davis.log')
     else:
         log_path = args.predictions_dir / (Path(__file__).name + '.log')
     log_path = log_utils.add_time_to_path(log_path)
@@ -208,10 +229,15 @@ def main():
             'Found no numpy files (ending in "%s") in --predictions-dir.' %
             args.npy_extension)
 
-    groundtruth_paths = [
-        args.groundtruth_dir / x.stem / 'GroundTruth'
-        for x in prediction_paths
-    ]
+    if args.eval_davis:
+        groundtruth_paths = [
+            args.groundtruth_dir / x.stem for x in prediction_paths
+        ]
+    else:
+        groundtruth_paths = [
+            args.groundtruth_dir / x.stem / 'GroundTruth'
+            for x in prediction_paths
+        ]
 
     # Maps track_id to list of (x, y, t) tuples.
     sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
@@ -219,6 +245,8 @@ def main():
             tqdm(groundtruth_paths), prediction_paths):
         if args.eval_3d_motion:
             groundtruth_dict = load_fbms_groundtruth_3d(groundtruth_path)
+        elif args.eval_davis:
+            groundtruth_dict = load_davis_groundtruth(groundtruth_path)
         else:
             groundtruth_dict = load_fbms_groundtruth(
                 groundtruth_path, args.include_unknown_labels)
