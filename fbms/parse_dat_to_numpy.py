@@ -3,9 +3,10 @@ import logging
 import numpy as np
 from pathlib import Path
 
+from PIL import Image
 from tqdm import tqdm
 
-from utils.fbms.utils import FbmsGroundtruth, parse_tracks
+from utils.fbms.utils import parse_tracks
 from utils.log import setup_logging
 
 
@@ -29,14 +30,6 @@ def main():
               'the output file. Default: {{dat_file_without_extension}}.npy '
               'if --dat-file is specified, else '
               '{{dat_dir}}/numpy-predictions if --dat-dir is specified.'))
-    parser.add_argument(
-        '--groundtruth-dir',
-        type=Path,
-        required=True,
-        help=("FBMS groundtruth split directory, containing a subdirectory "
-              "for each sequence, which in turn contain a 'GroundTruth' "
-              "sequence. If --dat-file is specified, this should point to a "
-              "specific sequence's 'GroundTruth' directory."))
 
     parser.add_argument(
         '--label-size-space-separated',
@@ -90,27 +83,21 @@ def main():
             for sequence_dat in args.dat_dir.glob('*.dat'):
                 sequences.append(sequence_dat.stem)
                 inputs.append(sequence_dat)
-        groundtruths = [
-            args.groundtruth_dir / x / 'GroundTruth'
-            for x in sequences
-        ]
         outputs = [args.output / (x + '.npy') for x in sequences]
     else:
         inputs = [args.dat_file]
-        groundtruths = [args.groundtruth_dir]
         outputs = [args.output]
 
     single_input = len(inputs) == 1
-    for input_path, groundtruth_path, output_path in zip(
-            tqdm(inputs, disable=single_input), groundtruths, outputs):
-        groundtruth = FbmsGroundtruth(groundtruth_path)
-
+    for input_path, output_path in zip(
+            tqdm(inputs, disable=single_input), outputs):
         with open(input_path, 'r') as f:
             tracks_txt = f.read()
 
+        width, height = Image.open(next(input_path.parent.glob('*.ppm'))).size
         segmentation = parse_tracks(
             tracks_txt,
-            image_shape=(groundtruth.image_height, groundtruth.image_width),
+            image_shape=(height, width),
             track_label_size_space_separated=args.label_size_space_separated,
             progress=not single_input)
         np.save(output_path, segmentation)
