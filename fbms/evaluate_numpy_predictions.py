@@ -1,4 +1,7 @@
-"""Evaluate predictions in numpy format with COCO-style evaluation."""
+"""Evaluate predictions in numpy format with COCO-style evaluation.
+
+This was used to evaluate the output of Margaret's method, after converting
+the ppm outputs to a "results.npy" file, using fbms/parse_dat_to_numpy.py."""
 
 import argparse
 import gc
@@ -16,19 +19,24 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from utils.fbms.utils import get_framenumber, get_frameoffset
-from utils.fbms.create_fbms_json import binary_mask_to_polygon
 from utils.log import setup_logging
 
 
-def load_numpy_annotations(input_dir, groundtruth):
+def load_numpy_annotations(input_dir,
+                           groundtruth,
+                           parse_frame_fn,
+                           predictions_in_results_npy):
     image_to_predictions_numpy = {}
     for image in tqdm(groundtruth.imgs.values()):
         # Format example: TestSet/marple7/marple7_400.jpg
         path = Path(image['file_name'])
         sequence = path.parent.stem
-        frame = get_frameoffset(sequence, get_framenumber(path))
+        frame = parse_frame_fn(path.stem)
 
-        annotation_path = input_dir / sequence / 'results.npy'
+        if predictions_in_results_npy:
+            annotation_path = input_dir / sequence / 'results.npy'
+        else:
+            annotation_path = input_dir / (sequence + '.npy')
         if not annotation_path.exists():
             raise ValueError('Annotation for sequence %s does not exist at %s'
                              % (sequence, annotation_path))
@@ -59,9 +67,10 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--input-dir',
-        help=('Contains subdirectory for each sequence. Each subdirectory '
-              'should contain "results.npy" file, which contains a (height, '
-              'width, num_frames) numpy array.'))
+        help=('Contains numpy file of predictions for each sequence. Each '
+              'file should be named {sequence}.npy and contain a (height, '
+              'width, num_frames) numpy array. Also see '
+              '--predictions-in-subdir for alternative directory structure.'))
     parser.add_argument(
         '--predictions-pickle',
         help=('Use pickle file containing dictionary mapping image_id to '
@@ -69,10 +78,37 @@ def main():
               'be used to resume from a previous run of this script, as this '
               'script dumps an "predictions.pkl" file in the output dir. '
               'Mutually exclusive with --input-dir.'))
+    parser.add_argument(
+        '--filename-format',
+        choices=['frame', 'sequence_frame', 'sequence-frame', 'fbms'],
+        default='frame',
+        help=('Specifies how to get frame number from the "file_name" stored '
+              'in COCO annotations. '
+              '"frame": the filename is the frame number, '
+              '"sequence_frame": frame number is separated by an underscore, '
+              '"sequence-frame": frame number is separated by a dash, '
+              '"fbms": assume fbms style frame numbers'))
     parser.add_argument('--annotations-json', required=True)
     parser.add_argument('--output-dir', required=True)
     parser.add_argument(
         '--visualize', action='store_true', help='Whether to visualize masks.')
+    parser.add_argument(
+        '--no-remove-largest-mask',
+        dest='remove_largest_mask',
+        action='store_false',
+        help=('By default, we remove the mask with the largest area, making '
+              'the assumption that it is background. Setting this flag '
+              'avoids this behavior (i.e. keeps the largest area mask).'))
+    parser.add_argument(
+        '--min-mask-portion',
+        default=0.001,
+        type=float,
+        help='Remove masks that are less than this portion of image size.')
+    parser.add_argument(
+        '--predictions-in-subdir',
+        action='store_true',
+        help=('If true, assume --input-dir contains a subdirectory for each '
+              'sequence, each of which contains a "results.npy" file.'))
 
     args = parser.parse_args()
 
@@ -95,9 +131,27 @@ def main():
 
     groundtruth = COCO(args.annotations_json)
 
+    if args.filename_format == 'fbms':
+        def parse_frame_offset(path):
+            return get_frameoffset(path.parent.stem, get_framenumber(path))
+    elif args.filename_format == 'sequence-frame':
+        def parse_frame_offset(x):
+            return int(x.split('-')[-1])
+    elif args.filename_format == 'sequence_frame':
+        def parse_frame_offset(x):
+            return int(x.split('_')[-1])
+    elif args.filename_format == 'frame':
+        parse_frame_offset = int
+    else:
+        raise ValueError(
+            'Unknown --filename-format: %s' % args.filename_format)
+
     if args.input_dir:
         image_to_predictions_numpy = load_numpy_annotations(
-            input_dir, groundtruth)
+            input_dir,
+            groundtruth,
+            parse_frame_offset,
+            predictions_in_results_npy=args.predictions_in_subdir)
         with open(output_dir / 'predictions.pkl', 'wb') as f:
             pickle.dump(image_to_predictions_numpy, f)
     else:
@@ -119,7 +173,8 @@ def main():
         masks = [annotation_np == object_id for object_id in ids]
         # Sort masks by area
         masks = sorted(masks, key=lambda mask: mask.sum())
-        # masks = masks[:-1]  # Remove mask with largest area (background)
+        if args.remove_largest_mask:
+            masks = masks[:-1]  # Remove mask with largest area (background)
 
         if args.visualize:
             vis_mask = np.zeros(
@@ -140,7 +195,7 @@ def main():
             area = mask_util.area(rle_mask).item()
             ratio = area / image_area
             score = 0.75  # ratio * 0.3 + 0.7  # Map to (0.7, 1) range
-            if ratio < 0.001:
+            if ratio < args.min_mask_portion:
                 continue
             annotations.append({
                 'image_id': image_id,
