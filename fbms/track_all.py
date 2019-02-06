@@ -1,3 +1,5 @@
+"""Run overlap-based tracker on detectron outputs on FBMS."""
+
 import argparse
 import collections
 import logging
