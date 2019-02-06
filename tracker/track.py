@@ -719,7 +719,7 @@ def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
             height = y1 - y0
             output_str += output_line_format.format(
                 frame=frame_numbers[timestamp],
-                track_id=track.friendly_id,
+                track_id=detection.track.friendly_id,
                 left=x0,
                 top=y0,
                 width=width,
