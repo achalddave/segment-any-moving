@@ -5,6 +5,7 @@ static objects) to initialize tracks, and a static object detector (one that
 detects static and moving objects) for continuing tracks."""
 
 import argparse
+import functools
 import logging
 import pickle
 import pprint
@@ -105,7 +106,8 @@ def merge_detections(init_detections,
                      score_init_min,
                      score_continue_min,
                      remove_continue_overlap,
-                     new_score_init_min=1.001):
+                     new_score_init_min=1.001,
+                     progress=False):
     # We want to use init_detections with score > s_i to init tracks, and
     # (init_detections or continue_detections with score > s_c) to continue
     # tracks. However, tracker.track only wants one set of detections, so we
@@ -127,7 +129,7 @@ def merge_detections(init_detections,
     # detection.
     merged_detections = {}
     files = set(init_detections.keys()) | set(continue_detections.keys())
-    for file in tqdm(files, desc='Merging'):
+    for file in tqdm(files, desc='Merging', disable=not progress):
         if file in init_detections:
             init_detection = init_detections[file]
             boxes = init_detection['boxes']
@@ -150,6 +152,58 @@ def merge_detections(init_detections,
             merged_detections[file] = standardized_detections(
                 continue_detections[file])
     return merged_detections
+
+
+def two_detector_track(images_dir,
+                       init_detections_dir,
+                       continue_detections_dir,
+                       output_video,
+                       get_framenumber,
+                       tracking_params,
+                       remove_continue_overlap,
+                       extension='.jpg',
+                       output_merged_dir=None,
+                       output_numpy=None,
+                       output_images_dir=None,
+                       fps=30,
+                       progress=False):
+    # Make a copy so we can safely edit score_init_min.
+    tracking_params = tracking_params.copy()
+    init_detections = tracker.load_detectron_pickles(
+        init_detections_dir, get_framenumber)
+    continue_detections = tracker.load_detectron_pickles(
+        continue_detections_dir,
+        get_framenumber)
+
+    new_init_min = 1.001
+    merged_detections = merge_detections(
+        init_detections,
+        continue_detections,
+        tracking_params['score_init_min'],
+        tracking_params['score_continue_min'],
+        remove_continue_overlap,
+        new_score_init_min=new_init_min)
+
+    tracking_params['score_init_min'] = new_init_min
+
+    if output_merged_dir is not None:
+        for file in merged_detections:
+            with open(output_merged_dir / (file + '.pickle'), 'wb') as f:
+                pickle.dump(merged_detections[file], f)
+
+    tracker.track_and_visualize(
+        merged_detections,
+        images_dir,
+        tracking_params,
+        get_framenumber,
+        extension,
+        vis_dataset='objectness',
+        output_images_dir=output_images_dir,
+        output_video=output_video,
+        output_video_fps=fps,
+        output_track_file=None,
+        output_numpy=output_numpy,
+        progress=progress)
 
 
 def main():
@@ -204,6 +258,7 @@ def main():
         help='Dataset to use for mapping label indices to names.')
     parser.add_argument('--save-images', action='store_true')
     parser.add_argument('--save-merged-detections', action='store_true')
+    parser.add_argument('--save-numpy', action='store_true')
     parser.add_argument(
         '--filename-format',
         choices=[
@@ -216,11 +271,17 @@ def main():
               '"sequence_frame": frame number is separated by an underscore, '
               '"sequence-frame": frame number is separated by a dash, '
               '"fbms": assume fbms style frame numbers'))
+    parser.add_argument(
+        '--recursive',
+        action='store_true',
+        help='Look recursively in --images-dir for images.')
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
 
     tracking_params = vars(tracking_params)
+    tracking_params['score_init_min'] = args.score_init_min
+    tracking_params['score_continue_min'] = args.score_continue_min
 
     args.output_dir.mkdir(exist_ok=True, parents=True)
     output_log_file = log_utils.add_time_to_path(
@@ -233,10 +294,6 @@ def main():
         './git-state/save_git_state.sh',
         output_log_file.with_suffix('.git-state')
     ])
-    if args.save_merged_detections:
-        output_merged = args.output_dir / 'merged'
-        assert not output_merged.exists()
-        output_merged.mkdir()
 
     if args.filename_format == 'fbms':
         get_framenumber = fbms_utils.get_framenumber
@@ -255,43 +312,76 @@ def main():
         raise ValueError(
             'Unknown --filename-format: %s' % args.filename_format)
 
-    tracking_params['score_init_min'] = 1.001
-    tracking_params['score_continue_min'] = args.score_continue_min
+    track_fn = functools.partial(
+        two_detector_track,
+        get_framenumber=get_framenumber,
+        tracking_params=tracking_params,
+        remove_continue_overlap=args.remove_continue_overlap,
+        extension=args.extension,
+        fps=args.fps)
 
-    init_detections = tracker.load_detectron_pickles(
-        args.init_detections_dir, get_framenumber)
-    continue_detections = tracker.load_detectron_pickles(
-        args.continue_detections_dir,
-        get_framenumber)
+    if not args.recursive:
+        output_merged = None
+        if args.save_merged_detections:
+            output_merged = args.output_dir / 'merged'
+            assert not output_merged.exists()
+            output_merged.mkdir()
+        output_numpy = None
+        if args.save_numpy:
+            output_numpy = args.output_dir / 'results.npy'
+        output_images_dir = None
+        if args.save_images:
+            output_images_dir = args.output_dir / 'images'
+            output_images_dir.mkdir(exist_ok=True, parents=True)
+        track_fn(
+            images_dir=args.images_dir,
+            init_detections_dir=args.init_detections_dir,
+            continue_detections_dir=args.continue_detections_dir,
+            output_video=args.output_dir / 'video.mp4',
+            output_merged_dir=output_merged,
+            output_numpy=output_numpy,
+            progress=True)
+    else:
+        if args.extension[0] != '.':
+            args.extension = '.' + args.extension
+        images = args.images_dir.rglob('*' + args.extension)
+        image_subdirs = sorted(set(
+            x.parent.relative_to(args.images_dir) for x in images))
+        for subdir in tqdm(image_subdirs):
+            output_merged = None
+            output_numpy = None
+            output_images_dir = None
+            if args.save_merged_detections:
+                output_merged = args.output_dir / subdir / 'merged-detections'
+                output_merged.mkdir(exist_ok=True, parents=True)
+            if args.save_numpy:
+                output_numpy = args.output_dir / subdir.with_suffix('.npy')
+            if args.save_images:
+                output_images_dir = args.output_dir / subdir / 'images'
+                output_images_dir.mkdir(exist_ok=True, parents=True)
 
-    merged_detections = merge_detections(
-        init_detections,
-        continue_detections,
-        args.score_init_min,
-        args.score_continue_min,
-        args.remove_continue_overlap,
-        new_score_init_min=tracking_params['score_init_min'])
+            init_dir = args.init_detections_dir / subdir
+            continue_dir = args.continue_detections_dir / subdir
+            if not init_dir.exists():
+                logging.warn(
+                    'Skipping sequence %s: detections not found at %s', subdir,
+                    init_dir)
+                continue
+            if not continue_dir.exists():
+                logging.warn(
+                    'Skipping sequence %s: detections not found at %s', subdir,
+                    continue_dir)
+                continue
 
-    if args.save_merged_detections:
-        for file in merged_detections:
-            with open(output_merged / (file + '.pickle'), 'wb') as f:
-                pickle.dump(merged_detections[file], f)
-
-    output_video = args.output_dir / 'video.mp4'
-    output_images_dir = None
-    if args.save_images:
-        output_images_dir = args.output_dir / 'images'
-    tracker.track_and_visualize(
-        merged_detections,
-        args.images_dir,
-        tracking_params,
-        get_framenumber,
-        args.extension,
-        vis_dataset='objectness',
-        output_images_dir=output_images_dir,
-        output_video=output_video,
-        output_video_fps=args.fps,
-        output_track_file=None)
+            track_fn(
+                images_dir=args.images_dir / subdir,
+                init_detections_dir=args.init_detections_dir / subdir,
+                continue_detections_dir=args.continue_detections_dir / subdir,
+                output_video=args.output_dir / subdir.with_suffix('.mp4'),
+                output_images_dir=output_images_dir,
+                output_merged_dir=output_merged,
+                output_numpy=output_numpy,
+                progress=False)
 
 
 if __name__ == "__main__":

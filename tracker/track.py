@@ -732,6 +732,29 @@ def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
         f.write(output_str)
 
 
+def output_numpy_tracks(tracks, output_numpy):
+    # Map frame number to list of Detections
+    height, width, _ = tracks[0].detections[0].image.shape
+    detections_by_frame = collections.defaultdict(list)
+    for track in tracks:
+        for detection in track.detections:
+            detections_by_frame[detection.timestamp].append(detection)
+    assert len(detections_by_frame) > 0
+
+    num_frames = max(detections_by_frame.keys()) + 1
+    full_segmentation = np.zeros((num_frames, height, width))
+
+    for timestamp, frame_detections in sorted(
+            detections_by_frame.items(), key=lambda x: x[0]):
+        # Paint segmentation in ascending order of confidence
+        frame_detections = sorted(frame_detections, key=lambda d: d.score)
+        segmentation = np.zeros((height, width))
+        for detection in frame_detections:
+            segmentation[detection.decoded_mask() != 0] = detection.track.id
+        full_segmentation[timestamp, :, :] = segmentation
+    np.save(output_numpy, full_segmentation)
+
+
 def visualize_tracks(tracks,
                      frame_paths,
                      dataset,
@@ -941,18 +964,24 @@ def track_and_visualize(detection_results,
                         get_framenumber,
                         frame_extension,
                         vis_dataset=None,
+                        output_numpy=None,
                         output_images_dir=None,
                         output_video=None,
                         output_video_fps=None,
-                        output_track_file=None):
+                        output_track_file=None,
+                        progress=True):
     frames = sorted(detection_results.keys(), key=get_framenumber)
 
     should_visualize = (output_images_dir is not None
                         or output_video is not None)
     should_output_mot = output_track_file is not None
+    should_output_numpy = output_numpy is not None
     if should_output_mot:
         logging.info('Will output MOT style tracks to %s',
                      output_track_file)
+    if should_output_numpy:
+        logging.info('Will output dense segmentation to numpy file: %s',
+                     output_numpy)
 
     label_list = get_classes(vis_dataset)
 
@@ -961,7 +990,8 @@ def track_and_visualize(detection_results,
     ]
     all_tracks = track(frame_paths,
                        [detection_results[frame] for frame in frames],
-                       tracking_params)
+                       tracking_params,
+                       progress=progress)
 
     if should_output_mot:
         logging.info('Outputting MOT style tracks')
@@ -970,8 +1000,10 @@ def track_and_visualize(detection_results,
                           output_track_file)
         logging.info('Output tracks to %s' % output_track_file)
 
+    if should_output_numpy:
+        output_numpy_tracks(all_tracks, output_numpy)
+
     if should_visualize:
-        logging.info('Visualizing tracks')
         visualize_tracks(
             all_tracks,
             frame_paths,
@@ -980,7 +1012,7 @@ def track_and_visualize(detection_results,
             output_images_dir,
             output_video,
             output_video_fps,
-            progress=True)
+            progress=progress)
 
 
 def main():
