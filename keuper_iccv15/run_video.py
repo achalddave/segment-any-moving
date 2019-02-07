@@ -80,6 +80,7 @@ def main():
     command = [str(x) for x in command]
     logging.info('Running command:\n%s', ' '.join(command))
     subprocess.check_output(command, cwd=args.code_dir)
+    logging.info('Finished!')
 
 
 if __name__ == "__main__":
