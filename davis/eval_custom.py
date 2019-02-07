@@ -1,3 +1,8 @@
+"""Per-frame version of proposed evaluation for video instance segmentation.
+
+See fbms/eval_custom.py for a video-level evaluation that also works with
+DAVIS."""
+
 import argparse
 import collections
 import logging
