@@ -183,6 +183,9 @@ def main():
         action='store_true',
         help=('Assume --groundtruth-dir points to a DAVIS annotations '
               'directory, and evaluate using DAVIS groundtruth.'))
+    parser.add_argument(
+        '--duplicate-last-prediction',
+        action='store_true')
     args = parser.parse_args()
 
     log_path = args.predictions_dir / (Path(__file__).name + '.log')
@@ -222,22 +225,23 @@ def main():
         raise ValueError('--include-unknown-labels cannot be specified if '
                          '--motion-3d-eval is used.')
 
-    prediction_paths = sorted(x for x in args.predictions_dir.iterdir()
-                              if x.name.endswith(args.npy_extension))
+    sequences = sorted(x.stem for x in args.groundtruth_dir.iterdir() if x.is_dir())
+    if args.eval_davis:
+        groundtruth_paths = [args.groundtruth_dir / x for x in sequences]
+    else:
+        groundtruth_paths = [
+            args.groundtruth_dir / x / 'GroundTruth' for x in sequences
+        ]
+
+    prediction_paths = [args.predictions_dir / (x + '.npy') for x in sequences]
+    for p in prediction_paths:
+        if not p.exists():
+            raise ValueError("Couldn't find prediction at %s" % p)
+
     if not prediction_paths:
         raise ValueError(
             'Found no numpy files (ending in "%s") in --predictions-dir.' %
             args.npy_extension)
-
-    if args.eval_davis:
-        groundtruth_paths = [
-            args.groundtruth_dir / x.stem for x in prediction_paths
-        ]
-    else:
-        groundtruth_paths = [
-            args.groundtruth_dir / x.stem / 'GroundTruth'
-            for x in prediction_paths
-        ]
 
     # Maps track_id to list of (x, y, t) tuples.
     sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
@@ -245,14 +249,23 @@ def main():
             tqdm(groundtruth_paths), prediction_paths):
         if args.eval_3d_motion:
             groundtruth_dict = load_fbms_groundtruth_3d(groundtruth_path)
+            sequence = groundtruth_path.parent.stem
         elif args.eval_davis:
             groundtruth_dict = load_davis_groundtruth(groundtruth_path)
+            sequence = groundtruth_path.stem
         else:
             groundtruth_dict = load_fbms_groundtruth(
                 groundtruth_path, args.include_unknown_labels)
+            sequence = groundtruth_path.parent.stem
 
         # (num_frames, height, width)
         prediction_all_frames = np.load(prediction_path)
+        if args.duplicate_last_prediction:
+            prediction_all_frames = np.insert(
+                prediction_all_frames,
+                -1,
+                prediction_all_frames[-1],
+                axis=0)
 
         h, w = prediction_all_frames.shape[1:]
         num_labeled_frames = len(groundtruth_dict)
@@ -264,7 +277,7 @@ def main():
 
         precision, recall, f_measure = eval_custom(groundtruth, prediction,
                                                    background_prediction_id)
-        sequence_metrics.append((groundtruth_path.parent.stem, precision,
+        sequence_metrics.append((sequence, precision,
                                  recall, f_measure))
 
     file_logger.info('Per sequence metrics:')
