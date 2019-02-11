@@ -10,9 +10,12 @@ import h5py
 import numpy as np
 
 import utils.log as log_utils
+from third_party.davis import add_davis16_to_sys_path
 
-# Can be overridden from argparse
-DAVIS_DIR = '/home/achald/research/misc/datasets/davis/davis-2016/'
+add_davis16_to_sys_path()
+from davis import cfg
+from davis.dataset import db_eval, db_save_eval
+
 
 
 def db_statistics(per_frame_values):
@@ -104,17 +107,16 @@ def main():
     parser.add_argument(
         '--output-dir', default='{masks_parent}/davis16-evaluation')
     parser.add_argument(
-        '--davis16-root',
-        default=Path(DAVIS_DIR),
+        '--annotations-dir',
         type=Path,
-        help=('DAVIS evaluation code. You will likely need to use the fork '
-              'at https://github.com/achalddave/davis16-python3, which '
-              'works with python3 and ignores extra files/directories '
-              'in the --masks-dir.'))
+        help='Specify alternative annotations, e.g. DAVIS 2017 fg/bg.')
+    parser.add_argument(
+        '--sequences-dir',
+        type=Path,
+        help='Specify alternative sequences dir, e.g. DAVIS 2017.')
 
     args = parser.parse_args()
 
-    assert args.davis16_root.exists()
     args.output_dir = Path(
         args.output_dir.format(masks_parent=args.masks_dir.parent))
     args.output_dir.mkdir(exist_ok=True)
@@ -123,17 +125,24 @@ def main():
         args.output_dir / (Path(__file__).name + '.log'))
     log_utils.setup_logging(log_path)
 
-    env = os.environ.copy()
-    env['PYTHONPATH'] = str(
-        args.davis16_root / 'python' / 'lib') + ':' + env['PYTHONPATH']
-    output = subprocess.check_output([
-        'python', str(args.davis16_root / 'python' / 'tools' / 'eval.py'),
-        args.masks_dir, args.output_dir
-    ], env=env)
-    logging.info('DAVIS output:\n%s', output.decode('utf-8'))
+    if args.annotations_dir is not None:
+        cfg.PATH.ANNOTATION_DIR = str(args.annotations_dir)
+        cfg.N_JOBS = 1  # Config changes don't propagate if this is > 1
 
-    davis_h5 = args.output_dir / (args.masks_dir.stem + '.h5')
-    davis_data = aggregate_frame_eval(davis_h5)
+    if args.sequences_dir is not None:
+        cfg.PATH.SEQUENCES_DIR = str(args.sequences_dir)
+        cfg.N_JOBS = 1  # Config changes don't propagate if this is > 1
+
+    db_eval_dict = db_eval(
+        args.masks_dir.name, [x.name for x in args.masks_dir.iterdir()],
+        str(args.masks_dir.parent),
+        metrics=['J', 'F', 'T'])
+
+    output_h5 = args.output_dir / (args.masks_dir.name + '.h5')
+    logging.info("Saving results in: %s", output_h5)
+    db_save_eval(db_eval_dict, outputdir=args.output_dir)
+
+    davis_data = aggregate_frame_eval(output_h5)
     output = db_eval_view(davis_data)
     logging.info('Results:\n%s\n', output)
 
