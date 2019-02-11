@@ -23,10 +23,10 @@ def main():
     parser.add_argument('output_dir', type=Path)
 
     args = parser.parse_args()
-    args.output_dir.mkdir(exist_ok=True)
+    args.output_dir.mkdir(exist_ok=True, parents=True)
 
     output_log_file = log_utils.add_time_to_path(
-        args.output_dir / Path(__name__).name)
+        args.output_dir / Path(__file__).name)
     log_utils.setup_logging(output_log_file)
     logging.info('Args: %s', pprint.pformat(vars(args)))
 
@@ -34,10 +34,6 @@ def main():
         './git-state/save_git_state.sh',
         output_log_file.with_suffix('.git-state')
     ])
-    if args.save_merged_detections:
-        output_merged = args.output_dir / 'merged'
-        assert not output_merged.exists()
-        output_merged.mkdir()
 
     for sequence_dir in tqdm(list(args.davis_annotations.iterdir())):
         if not sequence_dir.is_dir():
@@ -49,9 +45,9 @@ def main():
             image = np.array(Image.open(image_path))
             if image.ndim != 2:
                 __import__('ipdb').set_trace()
-            image = (image != 0)
+            image = (image != 0) * 256
             scipy.misc.imsave(args.output_dir / sequence / image_path.name,
-                              image.astype(np.uint8))
+                              image)
 
 
 if __name__ == "__main__":
