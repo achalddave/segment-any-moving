@@ -45,7 +45,7 @@ def compute_liteflownet_flow(flo_input_outputs, logger, gpu,
     with open(proto_template_path, 'r') as f:
         proto_template = f.read()
 
-    dimensions = None
+    dimensions = None  # (width, height)
     for image_path, _, _ in flo_input_outputs:
         image_size = Image.open(image_path).size
         if dimensions is None:
@@ -210,13 +210,13 @@ def compute_sequence_flow(input_dir, output_dir, flow_fn, flow_args, gpu_queue,
     file_logger = logging.getLogger(logger_name)
     dimensions = None
     for image_path in image_paths:
-        image = np.array(Image.open(image_path))
+        image = Image.open(image_path)
         if dimensions is None:
-            dimensions = image.shape
+            dimensions = image.size
         else:
-            assert dimensions == image.shape, (
+            assert dimensions == image.size, (
                 'Image sizes in sequence do not match (%s: %s, vs %s: %s)' %
-                (image_paths[0], dimensions, image_path, image.shape))
+                (image_paths[0], dimensions, image_path, image.size))
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
