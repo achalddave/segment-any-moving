@@ -817,7 +817,7 @@ def visualize_tracks(tracks,
                 tqdm(frame_paths, disable=not progress)):
             visualized = visualize_image(t)
             if output_dir is not None:
-                image = PIL.Image.fromarray(visualize_image(t))
+                image = PIL.Image.fromarray(visualized)
                 image.save(output_dir / (image_path.name + '.png'))
             writer.write_frame(visualized)
 
