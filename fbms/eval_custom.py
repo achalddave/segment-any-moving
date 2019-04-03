@@ -146,6 +146,11 @@ def load_davis_groundtruth(groundtruth_dir):
     return output
 
 
+def load_ytvos_groundtruth(groundtruth_dir):
+    frames = sorted(groundtruth_dir.glob('*.png'), key=lambda x: int(x.stem))
+    return {i: np.array(Image.open(p)) for i, p in enumerate(frames)}
+
+
 def main():
     # Use first line of file docstring as description if it exists.
     parser = argparse.ArgumentParser(
@@ -176,38 +181,30 @@ def main():
         help=('Whether to include labels in ppm files that are not in '
               'groundtruth .dat file when evaluating. See '
               'FbmsGroundtruth.frame_labels method for more details. Invalid '
-              'if --eval-3d-motion or --eval-davis is specified.'))
+              'if --eval-type is not fbms.'))
     parser.add_argument(
-        '--eval-3d-motion',
-        action='store_true',
-        help='Evaluate using groundtruth from FBMS-3D motion.')
-    parser.add_argument(
-        '--eval-davis',
-        action='store_true',
-        help=('Assume --groundtruth-dir points to a DAVIS annotations '
-              'directory, and evaluate using DAVIS groundtruth.'))
+        '--eval-type',
+        choices=['fbms', '3d-motion', 'davis', 'ytvos'],
+        help=('Choose evaluation type / groundtruth format. Options: '
+              'fbms: Default, assume fbms groundtruth;',
+              '3d-motion: Evaluate using groundtruth from FBMS-3D motion; '
+              'davis: Assume DAVIS groundtruth; '
+              'ytvos: Assume YTVOS groundtruth.'))
     parser.add_argument(
         '--duplicate-last-prediction',
         action='store_true')
     args = parser.parse_args()
 
     log_path = args.predictions_dir / (Path(__file__).name + '.log')
-    assert (sum([
-        args.include_unknown_labels, args.eval_3d_motion, args.eval_davis
-    ]) <= 1), (
-        '--include-unknown-labels, --eval-3d-motion and --eval-davis are '
-        'mutually exclusive.')
+    assert (not args.include_unknown_labels or args.eval_type == 'fbms'), (
+        '--include-unknown-labels is only valid if --eval-type is "fbms"')
 
     if args.include_unknown_labels:
         log_path = args.predictions_dir / (
-            Path(__file__).name + '_with-unknown.log')
-    elif args.eval_3d_motion:
-        log_path = args.predictions_dir / (
-            Path(__file__).name + '_3d-motion.log')
-    elif args.eval_davis:
-        log_path = args.predictions_dir / (Path(__file__).name + '_davis.log')
+            Path(__file__).name + '_fbms-with-unknown.log')
     else:
-        log_path = args.predictions_dir / (Path(__file__).name + '.log')
+        log_path = args.predictions_dir / (Path(__file__).name +
+                                           ('_%s.log' % args.eval_type))
     log_path = log_utils.add_time_to_path(log_path)
     log_utils.setup_logging(log_path)
     file_logger = logging.getLogger(str(log_path))
@@ -224,19 +221,17 @@ def main():
     else:
         background_prediction_id = None
 
-    if args.eval_3d_motion and args.include_unknown_labels:
-        raise ValueError('--include-unknown-labels cannot be specified if '
-                         '--motion-3d-eval is used.')
-
     sequences = sorted(x.stem for x in args.groundtruth_dir.iterdir() if x.is_dir())
-    if args.eval_davis:
+    if args.eval_type in ['davis', 'ytvos']:
         groundtruth_paths = [args.groundtruth_dir / x for x in sequences]
     else:
         groundtruth_paths = [
             args.groundtruth_dir / x / 'GroundTruth' for x in sequences
         ]
 
-    prediction_paths = [args.predictions_dir / (x + '.npy') for x in sequences]
+    prediction_paths = [
+        args.predictions_dir / (x + args.npy_extension) for x in sequences
+    ]
     for p in prediction_paths:
         if not p.exists():
             raise ValueError("Couldn't find prediction at %s" % p)
@@ -250,13 +245,16 @@ def main():
     sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
     for groundtruth_path, prediction_path in zip(
             tqdm(groundtruth_paths), prediction_paths):
-        if args.eval_3d_motion:
+        if args.eval_type == '3d-motion':
             groundtruth_dict = load_fbms_groundtruth_3d(groundtruth_path)
             sequence = groundtruth_path.parent.stem
-        elif args.eval_davis:
+        elif args.eval_type == 'davis':
             groundtruth_dict = load_davis_groundtruth(groundtruth_path)
             sequence = groundtruth_path.stem
-        else:
+        elif args.eval_type == 'ytvos':
+            groundtruth_dict = load_ytvos_groundtruth(groundtruth_path)
+            sequence = groundtruth_path.stem
+        elif args.eval_type == 'fbms':
             groundtruth_dict = load_fbms_groundtruth(
                 groundtruth_path, args.include_unknown_labels)
             sequence = groundtruth_path.parent.stem
@@ -299,8 +297,11 @@ def main():
     logging.info('Average f-measure: %.2f',
                  np.mean([m[3] for m in sequence_metrics]))
 
-    logging.info('F-measure of average prec/rec: %.2f',
-                 2 * avg_precision * avg_recall / (avg_precision + avg_recall))
+    # Unused, but can be printed for debugging. Commented out to avoid
+    # confusion.
+    # logging.info('F-measure of average prec/rec: %.2f',
+    #              2 * avg_precision * avg_recall /
+    #              (avg_precision + avg_recall))
 
 
 if __name__ == "__main__":
