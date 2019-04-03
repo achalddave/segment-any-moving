@@ -54,13 +54,14 @@ def main():
         sorted_ids = sorted(
             id_counts.keys(), key=lambda i: id_counts[i], reverse=True)
         if background_prediction_id is None:  # Infer background id
-            background_prediction_id = int(sorted_ids[0])
+            current_bg = int(sorted_ids[0])
             print('Inferred background prediction id as %s for %s' %
-                  (background_prediction_id, relative_dir))
+                  (current_bg, relative_dir))
             sorted_ids = sorted_ids[1:]
         else:
+            current_bg = background_prediction_id
             sorted_ids = [
-                x for x in sorted_ids if x != background_prediction_id
+                x for x in sorted_ids if x != current_bg
             ]
 
         # Map id to size index
@@ -84,7 +85,7 @@ def main():
                 if isinstance(mask_id, float):
                     assert mask_id.is_integer()
                     mask_id = int(mask_id)
-                if mask_id == background_prediction_id:
+                if mask_id == current_bg:
                     continue
                 color = colors[int(id_rankings[mask_id]) % len(colors)]
                 vis_image = vis_mask(
