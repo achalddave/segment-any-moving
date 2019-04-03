@@ -807,7 +807,7 @@ def visualize_tracks(tracks,
     ffmpeg_params = [
         '-vf', "scale=trunc(iw/2)*2:trunc(ih/2)*2", '-pix_fmt', 'yuv420p'
     ]
-    height, width, _ = cv2.imread(str(frame_paths[0])).shape
+    width, height = PIL.Image.open(str(frame_paths[0])).size
     with FFMPEG_VideoWriter(
             str(output_video),
             size=(width, height),
