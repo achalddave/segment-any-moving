@@ -3,7 +3,7 @@
 import argparse
 import collections
 import logging
-import os
+import math
 import pickle
 import pprint
 import subprocess
@@ -732,27 +732,44 @@ def output_mot_tracks(tracks, label_list, frame_numbers, output_track_file):
         f.write(output_str)
 
 
-def output_numpy_tracks(tracks, output_numpy):
+def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
+                        num_frames, image_width, image_height):
+    """
+    Args:
+        tracks (list of Track)
+        output_numpy (Path)
+        output_numpy_every_kth (int): Output only every kth frame in the numpy
+            file. This is useful, for example, when a dataset has sparse
+            annotations, and we only need to save the segmentations for, say,
+            every 6th frame, as in YTVOS.
+        num_frames (int): Number of frames in the video.
+        image_width (int)
+        image_height (int)
+    """
     # Map frame number to list of Detections
-    height, width, _ = tracks[0].detections[0].image.shape
     detections_by_frame = collections.defaultdict(list)
     for track in tracks:
         for detection in track.detections:
             detections_by_frame[detection.timestamp].append(detection)
     assert len(detections_by_frame) > 0
 
-    num_frames = max(detections_by_frame.keys()) + 1
-    full_segmentation = np.zeros((num_frames, height, width))
+    num_output_frames = math.floor(num_frames / output_numpy_every_kth)
+    full_segmentation = np.zeros((num_output_frames, image_height,
+                                  image_width))
 
     for timestamp, frame_detections in sorted(
             detections_by_frame.items(), key=lambda x: x[0]):
+        timestamp, remainder = divmod(timestamp, output_numpy_every_kth)
+        if remainder != 0:
+            continue
+        timestamp -= 1
         # Paint segmentation in ascending order of confidence
         frame_detections = sorted(frame_detections, key=lambda d: d.score)
-        segmentation = np.zeros((height, width))
+        segmentation = np.zeros((image_height, image_width))
         for detection in frame_detections:
             segmentation[detection.decoded_mask() != 0] = detection.track.id
         full_segmentation[timestamp, :, :] = segmentation
-    np.save(output_numpy, full_segmentation)
+    np.savez_compressed(output_numpy, segmentation=full_segmentation)
 
 
 def visualize_tracks(tracks,
@@ -965,6 +982,7 @@ def track_and_visualize(detection_results,
                         frame_extension,
                         vis_dataset=None,
                         output_numpy=None,
+                        output_numpy_every_kth=1,
                         output_images_dir=None,
                         output_video=None,
                         output_video_fps=None,
@@ -982,6 +1000,7 @@ def track_and_visualize(detection_results,
     if should_output_numpy:
         logging.info('Will output dense segmentation to numpy file: %s',
                      output_numpy)
+        assert output_numpy.suffix == '.npz', 'output_numpy must end in .npz'
 
     label_list = get_classes(vis_dataset)
 
@@ -992,6 +1011,7 @@ def track_and_visualize(detection_results,
                        [detection_results[frame] for frame in frames],
                        tracking_params,
                        progress=progress)
+    w, h = PIL.Image.open(frame_paths[0]).size
 
     if should_output_mot:
         logging.info('Outputting MOT style tracks')
@@ -1001,7 +1021,8 @@ def track_and_visualize(detection_results,
         logging.info('Output tracks to %s' % output_track_file)
 
     if should_output_numpy:
-        output_numpy_tracks(all_tracks, output_numpy)
+        output_numpy_tracks(all_tracks, output_numpy, output_numpy_every_kth,
+                            len(frame_paths), w, h)
 
     if should_visualize:
         visualize_tracks(
