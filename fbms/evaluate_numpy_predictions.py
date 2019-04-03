@@ -1,7 +1,8 @@
 """Evaluate predictions in numpy format with COCO-style evaluation.
 
 This was used to evaluate the output of Margaret's method, after converting
-the ppm outputs to a "results.npy" file, using fbms/parse_dat_to_numpy.py."""
+the ppm outputs to a "results.npy" file, using fbms/parse_dat_to_numpy.py
+or fbms/parse_ppm_to_numpy.py."""
 
 import argparse
 import gc
