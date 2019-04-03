@@ -42,8 +42,11 @@ import utils.log as log_utils
 from utils.misc import simple_table
 
 
+EPS = 1e-10
+
+
 def compute_f_measure(precision, recall):
-    return 2 * precision * recall / (max(precision + recall, 1e-10))
+    return 2 * precision * recall / (max(precision + recall, EPS))
 
 
 def eval_custom(groundtruth, prediction, background_prediction_id):
@@ -85,8 +88,8 @@ def eval_custom(groundtruth, prediction, background_prediction_id):
             track_prediction = predictions_by_id[predicted_id]
             intersection = (track_groundtruth & track_prediction).sum()
             intersections[(groundtruth_id, predicted_id)] = intersection
-            precision = intersection / num_predicted[predicted_id]
-            recall = intersection / num_groundtruth[groundtruth_id]
+            precision = intersection / max(num_predicted[predicted_id], EPS)
+            recall = intersection / max(num_groundtruth[groundtruth_id], EPS)
             f_measures[g, p] = compute_f_measure(precision, recall)
     # Tuple of (groundtruth_indices, predicted_indices)
     assignment = scipy.optimize.linear_sum_assignment(-f_measures)
@@ -98,8 +101,8 @@ def eval_custom(groundtruth, prediction, background_prediction_id):
     num_predicted = (prediction != background_prediction_id).sum()
     num_groundtruth = (groundtruth != 0).sum()
     num_correct = sum(intersections[(g, p)] for g, p in assignment)
-    precision = 100 * num_correct / num_predicted
-    recall = 100 * num_correct / num_groundtruth
+    precision = 100 * num_correct / max(num_predicted, EPS)
+    recall = 100 * num_correct / max(num_groundtruth, EPS)
     f_measure = compute_f_measure(precision, recall)
     return precision, recall, f_measure
 
