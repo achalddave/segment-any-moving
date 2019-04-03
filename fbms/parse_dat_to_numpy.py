@@ -75,8 +75,10 @@ def main():
                 if sequence_dir.is_dir():
                     dat_file = list(sequence_dir.glob('*.dat'))
                     if len(dat_file) != 1:
-                        raise ValueError('Found %s (!= 1) dat files in %s' %
-                                         (len(dat_file), sequence_dir))
+                        logging.error(
+                            'Found %s (!= 1) dat files in %s, skipping...' %
+                            (len(dat_file), sequence_dir))
+                        continue
                     inputs.append(dat_file[0])
                     sequences.append(sequence_dir.name)
         else:
