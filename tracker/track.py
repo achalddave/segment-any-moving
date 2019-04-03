@@ -752,7 +752,9 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
         for detection in track.detections:
             detections_by_frame[detection.timestamp].append(detection)
 
-    num_output_frames = math.floor(num_frames / output_numpy_every_kth)
+    num_output_frames = math.floor(num_frames / output_numpy_every_kth) + 1
+    logging.info(f'Num output frames for {output_numpy.stem}: '
+                 f'{num_output_frames}')
     full_segmentation = np.zeros((num_output_frames, image_height,
                                   image_width))
 
