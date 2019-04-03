@@ -17,10 +17,9 @@ import pycocotools.mask as mask_util
 from tqdm import tqdm
 
 import utils.log as log_utils
-from fbms.track_all import track_fbms
 from tracker import track as tracker
-from utils.fbms import utils as fbms_utils
 from utils.detectron_outputs import standardized_detections
+from utils.fbms import utils as fbms_utils
 from utils.misc import parse_bool
 
 
@@ -165,6 +164,7 @@ def two_detector_track(images_dir,
                        extension='.jpg',
                        output_merged_dir=None,
                        output_numpy=None,
+                       output_numpy_every_kth_frame=1,
                        output_images_dir=None,
                        fps=30,
                        progress=False):
@@ -204,6 +204,7 @@ def two_detector_track(images_dir,
         output_video_fps=fps,
         output_track_file=None,
         output_numpy=output_numpy,
+        output_numpy_every_kth=output_numpy_every_kth_frame,
         progress=progress)
 
 
@@ -261,6 +262,12 @@ def main():
     parser.add_argument(
         '--save-merged-detections', type=parse_bool, default=False)
     parser.add_argument('--save-numpy', type=parse_bool, default=False)
+    parser.add_argument(
+        '--save-numpy-every-kth-frame',
+        help='Save only every kth frame in numpy output.',
+        type=int,
+        default=1)
+    parser.add_argument('--save-video', type=parse_bool, default=True)
     parser.add_argument(
         '--filename-format',
         choices=[
@@ -320,6 +327,7 @@ def main():
         tracking_params=tracking_params,
         remove_continue_overlap=args.remove_continue_overlap,
         extension=args.extension,
+        output_numpy_every_kth_frame=args.save_numpy_every_kth_frame,
         fps=args.fps)
 
     if not args.recursive:
@@ -330,29 +338,38 @@ def main():
             output_merged.mkdir()
         output_numpy = None
         if args.save_numpy:
-            output_numpy = args.output_dir / 'results.npy'
+            output_numpy = args.output_dir / 'results.npz'
         output_images_dir = None
         if args.save_images:
             output_images_dir = args.output_dir / 'images'
             output_images_dir.mkdir(exist_ok=True, parents=True)
+        output_video = None
+        if args.save_video:
+            output_video = args.output_dir / 'video.mp4'
         track_fn(
             images_dir=args.images_dir,
             init_detections_dir=args.init_detections_dir,
             continue_detections_dir=args.continue_detections_dir,
-            output_video=args.output_dir / 'video.mp4',
+            output_video=output_video,
             output_merged_dir=output_merged,
             output_numpy=output_numpy,
             progress=True)
     else:
         if args.extension[0] != '.':
             args.extension = '.' + args.extension
-        images = args.images_dir.rglob('*' + args.extension)
+        images = list(args.images_dir.rglob('*' + args.extension))
+        # Handle one-level of symlinks for ease of use.
+        for symlink_dir in args.images_dir.iterdir():
+            if symlink_dir.is_symlink() and symlink_dir.is_dir():
+                images.extend(
+                    [x for x in symlink_dir.rglob('*' + args.extension)])
         image_subdirs = sorted(set(
             x.parent.relative_to(args.images_dir) for x in images))
         for subdir in tqdm(image_subdirs):
             output_merged = None
             output_numpy = None
             output_images_dir = None
+            output_video = None
             if args.save_merged_detections:
                 output_merged = args.output_dir / subdir / 'merged-detections'
                 output_merged.mkdir(exist_ok=True, parents=True)
@@ -361,7 +378,14 @@ def main():
             if args.save_images:
                 output_images_dir = args.output_dir / subdir / 'images'
                 output_images_dir.mkdir(exist_ok=True, parents=True)
+            if args.save_video:
+                output_video = args.output_dir / subdir.with_suffix('.mp4')
 
+            if all(x is None or x.exists()
+                   for x in (output_merged, output_numpy, output_images_dir,
+                             output_video)):
+                logging.info('%s already processed, skipping', subdir)
+                continue
             init_dir = args.init_detections_dir / subdir
             continue_dir = args.continue_detections_dir / subdir
             if not init_dir.exists():
@@ -379,7 +403,7 @@ def main():
                 images_dir=args.images_dir / subdir,
                 init_detections_dir=args.init_detections_dir / subdir,
                 continue_detections_dir=args.continue_detections_dir / subdir,
-                output_video=args.output_dir / subdir.with_suffix('.mp4'),
+                output_video=output_video,
                 output_images_dir=output_images_dir,
                 output_merged_dir=output_merged,
                 output_numpy=output_numpy,
