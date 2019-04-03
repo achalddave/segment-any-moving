@@ -761,7 +761,6 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
         timestamp, remainder = divmod(timestamp, output_numpy_every_kth)
         if remainder != 0:
             continue
-        timestamp -= 1
         # Paint segmentation in ascending order of confidence
         frame_detections = sorted(frame_detections, key=lambda d: d.score)
         segmentation = np.zeros((image_height, image_width))
