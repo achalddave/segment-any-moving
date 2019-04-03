@@ -21,6 +21,7 @@ from fbms.track_all import track_fbms
 from tracker import track as tracker
 from utils.fbms import utils as fbms_utils
 from utils.detectron_outputs import standardized_detections
+from utils.misc import parse_bool
 
 
 def filter_scores(detection, threshold):
@@ -256,9 +257,10 @@ def main():
         default='objectness',
         choices=['coco', 'objectness'],
         help='Dataset to use for mapping label indices to names.')
-    parser.add_argument('--save-images', action='store_true')
-    parser.add_argument('--save-merged-detections', action='store_true')
-    parser.add_argument('--save-numpy', action='store_true')
+    parser.add_argument('--save-images', type=parse_bool, default=False)
+    parser.add_argument(
+        '--save-merged-detections', type=parse_bool, default=False)
+    parser.add_argument('--save-numpy', type=parse_bool, default=False)
     parser.add_argument(
         '--filename-format',
         choices=[

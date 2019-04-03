@@ -1,3 +1,5 @@
+import argparse
+
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm']
 
 
@@ -25,3 +27,20 @@ def simple_table(rows):
             output += '\n'
         output += row_format.format(*row)
     return output
+
+
+def parse_bool(arg):
+    """Parse string to boolean.
+    Using type=bool in argparse does not do the right thing. E.g.
+    '--bool_flag False' will parse as True. See
+    <https://stackoverflow.com/q/15008758/1291812>
+
+    Usage:
+        parser.add_argument( '--choice', type=parse_bool)
+    """
+    if arg == 'True':
+        return True
+    elif arg == 'False':
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Expected 'True' or 'False'.")
