@@ -101,7 +101,7 @@ def main():
             tracks_txt,
             image_shape=(height, width),
             track_label_size_space_separated=args.label_size_space_separated,
-            progress=not single_input)
+            progress=True)
         np.save(output_path, segmentation)
 
 
