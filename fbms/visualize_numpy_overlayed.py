@@ -49,6 +49,14 @@ def main():
             alg=ns.PATH)
 
         all_frames_mask = np.load(mask_path)
+        if args.np_extension == '.npz':
+            # Segmentation saved with savez_compressed; ensure there is only
+            # one item in the dict and retrieve it.
+            keys = all_frames_mask.keys()
+            assert len(keys) == 1, (
+                'Numpy file (%s) contained dict with multiple items, not sure '
+                'which one to load.' % mask_path)
+            all_frames_mask = all_frames_mask[keys[0]]
         all_ids, id_counts = np.unique(all_frames_mask, return_counts=True)
         id_counts = dict(zip(all_ids, id_counts))
         sorted_ids = sorted(
