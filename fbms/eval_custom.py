@@ -261,6 +261,14 @@ def main():
 
         # (num_frames, height, width)
         prediction_all_frames = np.load(prediction_path)
+        if isinstance(prediction_all_frames, np.lib.npyio.NpzFile):
+            # Segmentation saved with savez_compressed; ensure there is only
+            # one item in the dict and retrieve it.
+            keys = prediction_all_frames.keys()
+            assert len(keys) == 1, (
+                'Numpy file (%s) contained dict with multiple items, not sure '
+                'which one to load.' % prediction_path)
+            prediction_all_frames = prediction_all_frames[keys[0]]
         if args.duplicate_last_prediction:
             prediction_all_frames = np.insert(
                 prediction_all_frames,
