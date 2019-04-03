@@ -374,7 +374,7 @@ def main():
                 output_merged = args.output_dir / subdir / 'merged-detections'
                 output_merged.mkdir(exist_ok=True, parents=True)
             if args.save_numpy:
-                output_numpy = args.output_dir / subdir.with_suffix('.npy')
+                output_numpy = args.output_dir / subdir.with_suffix('.npz')
             if args.save_images:
                 output_images_dir = args.output_dir / subdir / 'images'
                 output_images_dir.mkdir(exist_ok=True, parents=True)
