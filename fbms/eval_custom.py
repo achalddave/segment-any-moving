@@ -264,7 +264,7 @@ def main():
         if isinstance(prediction_all_frames, np.lib.npyio.NpzFile):
             # Segmentation saved with savez_compressed; ensure there is only
             # one item in the dict and retrieve it.
-            keys = prediction_all_frames.keys()
+            keys = list(prediction_all_frames.keys())
             assert len(keys) == 1, (
                 'Numpy file (%s) contained dict with multiple items, not sure '
                 'which one to load.' % prediction_path)
