@@ -1,4 +1,4 @@
-"""Evaluate FBMS outputs using a metric that penalizes false positives.
+"""Evaluate segmentation outputs using a metric that penalizes false positives.
 
 The metric is computed as follows:
 
@@ -27,6 +27,7 @@ Groundtruth-prediction assignment:
 """
 
 import argparse
+import collections
 import logging
 import subprocess
 from pathlib import Path
