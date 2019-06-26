@@ -203,6 +203,7 @@ def main():
         type=Path,
         help='Contains numpy file of predictions for each sequence.',
         required=True)
+    parser.add_argument('--output-dir', default='{predictions_dir}')
     parser.add_argument('--npy-extension', default='.npy')
     parser.add_argument(
         '--background-id',
@@ -230,18 +231,25 @@ def main():
         '--duplicate-last-prediction',
         action='store_true')
     parser.add_argument('--ignore-missing-predictions', action='store_true')
+    parser.add_argument('--log-suffix')
     args = parser.parse_args()
 
-    log_path = args.predictions_dir / (Path(__file__).name + '.log')
+    args.output_dir = Path(
+        args.output_dir.format(predictions_dir=args.predictions_dir))
+    args.output_dir.mkdir(exist_ok=True, parents=True)
+    log_path = args.output_dir / (Path(__file__).name + '.log')
     assert (not args.include_unknown_labels or args.eval_type == 'fbms'), (
         '--include-unknown-labels is only valid if --eval-type is "fbms"')
 
     if args.include_unknown_labels:
-        log_path = args.predictions_dir / (
+        log_path = args.output_dir / (
             Path(__file__).name + '_fbms-with-unknown.log')
     else:
-        log_path = args.predictions_dir / (Path(__file__).name +
+        log_path = args.output_dir / (Path(__file__).name +
                                            ('_%s.log' % args.eval_type))
+    if args.log_suffix:
+        log_path = log_path.parent / (log_path.stem + '_' + args.log_suffix +
+                                      '.log')
     log_path = log_utils.add_time_to_path(log_path)
     log_utils.setup_logging(log_path)
     file_logger = logging.getLogger(str(log_path))
