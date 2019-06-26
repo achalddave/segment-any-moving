@@ -266,7 +266,8 @@ def main():
     else:
         background_prediction_id = None
 
-    sequences = sorted(x.stem for x in args.groundtruth_dir.iterdir() if x.is_dir())
+    sequences = sorted(x.stem for x in args.groundtruth_dir.iterdir()
+                       if x.is_dir())
     if args.eval_type in ['davis', 'ytvos']:
         groundtruth_paths = [args.groundtruth_dir / x for x in sequences]
     else:
