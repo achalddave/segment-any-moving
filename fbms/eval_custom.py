@@ -219,6 +219,7 @@ def main():
               'if --eval-type is not fbms.'))
     parser.add_argument(
         '--eval-type',
+        required=True,
         choices=['fbms', '3d-motion', 'davis', 'ytvos'],
         help=('Choose evaluation type / groundtruth format. Options: '
               'fbms: Default, assume fbms groundtruth;',
