@@ -349,8 +349,12 @@ def main():
         track_lengths.extend(lengths.values())
         sequence_metrics.append((sequence, precision,
                                  recall, f_measure))
-    logging.info('Average track length: %s',
-                 sum(track_lengths) / len(track_lengths))
+    logging.info(f'Track lengths:\n'
+                 f'Min: {min(track_lengths)}\n'
+                 f'Max: {max(track_lengths)}\n'
+                 f'Median: {np.median(track_lengths)}\n'
+                 f'Avg: {np.mean(track_lengths)}\n'
+                 f'Std: {np.std(track_lengths)}\n')
 
     file_logger.info('Per sequence metrics:')
     formatted_metrics = [
