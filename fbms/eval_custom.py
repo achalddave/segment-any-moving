@@ -228,6 +228,7 @@ def main():
     parser.add_argument(
         '--duplicate-last-prediction',
         action='store_true')
+    parser.add_argument('--ignore-missing-predictions', action='store_true')
     args = parser.parse_args()
 
     log_path = args.predictions_dir / (Path(__file__).name + '.log')
@@ -269,7 +270,12 @@ def main():
     ]
     for p in prediction_paths:
         if not p.exists():
-            raise ValueError("Couldn't find prediction at %s" % p)
+            if args.ignore_missing_predictions:
+                logging.warn("Couldn't find prediction at %s" % p)
+            else:
+                raise ValueError("Couldn't find prediction at %s.\n"
+                                 "To ignore missing predictions, specify "
+                                 "--ignore-missing-predictions" % p)
 
     if not prediction_paths:
         raise ValueError(
@@ -281,6 +287,10 @@ def main():
     track_lengths = []
     for groundtruth_path, prediction_path in zip(
             tqdm(groundtruth_paths), prediction_paths):
+        if not prediction_path.exists() and args.ignore_missing_predictions:
+            logging.warn('Skipping sequence due to missing prediction: %s',
+                         prediction_path)
+            continue
         if args.eval_type == '3d-motion':
             groundtruth_dict = load_fbms_groundtruth_3d(groundtruth_path)
             sequence = groundtruth_path.parent.stem
