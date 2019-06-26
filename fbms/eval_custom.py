@@ -45,6 +45,41 @@ from utils.misc import simple_table
 EPS = 1e-10
 
 
+def compute_track_lengths(prediction, background_prediction_id):
+    track_presence = collections.defaultdict(lambda: [None, 0])
+    predicted_track_ids = set(np.unique(prediction))
+    predictions_by_id = {
+        p: (prediction == p) for p in predicted_track_ids
+    }
+    if background_prediction_id is None:  # Infer background id
+        num_predicted = {
+            p: id_prediction.sum()
+            for p, id_prediction in predictions_by_id.items()
+        }
+        background_prediction_id = max(
+            num_predicted.items(), key=lambda x: x[1])[0]
+
+    del predictions_by_id[background_prediction_id]
+    predicted_track_ids.remove(background_prediction_id)
+
+    for p in predictions_by_id:
+        if p < 0:
+            logging.info(f'Ignoring predicted track with label <0: {p}')
+            continue
+        for t in range(prediction.shape[0]):
+            if np.any(predictions_by_id[p][t]):
+                if track_presence[p][0] is None:
+                    track_presence[p][0] = t
+                track_presence[p][1] = t
+    track_lengths = {
+        p: track_presence[p][1] - track_presence[p][0] + 1
+        for p in predicted_track_ids
+        if p >= 0
+    }
+    return track_lengths
+
+
+
 def compute_f_measure(precision, recall):
     return 2 * precision * recall / (max(precision + recall, EPS))
 
@@ -104,7 +139,7 @@ def eval_custom(groundtruth, prediction, background_prediction_id):
     precision = 100 * num_correct / max(num_predicted, EPS)
     recall = 100 * num_correct / max(num_groundtruth, EPS)
     f_measure = compute_f_measure(precision, recall)
-    return precision, recall, f_measure
+    return precision, recall, f_measure, background_prediction_id
 
 
 def load_fbms_groundtruth(groundtruth_dir, include_unknown_labels):
@@ -243,6 +278,7 @@ def main():
 
     # Maps track_id to list of (x, y, t) tuples.
     sequence_metrics = []  # List of (sequence, precision, recall, f-measure)
+    track_lengths = []
     for groundtruth_path, prediction_path in zip(
             tqdm(groundtruth_paths), prediction_paths):
         if args.eval_type == '3d-motion':
@@ -284,10 +320,17 @@ def main():
             groundtruth[f] = groundtruth_dict[frame]
             prediction[f] = prediction_all_frames[frame]
 
-        precision, recall, f_measure = eval_custom(groundtruth, prediction,
-                                                   background_prediction_id)
+        precision, recall, f_measure, inferred_background = eval_custom(
+            groundtruth, prediction, background_prediction_id)
+        logging.info('Sequence: %s, Prec: %s, Rec: %s, F: %s', sequence,
+                     precision, recall, f_measure)
+        lengths = compute_track_lengths(prediction_all_frames,
+                                        inferred_background)
+        track_lengths.extend(lengths.values())
         sequence_metrics.append((sequence, precision,
                                  recall, f_measure))
+    logging.info('Average track length: %s',
+                 sum(track_lengths) / len(track_lengths))
 
     file_logger.info('Per sequence metrics:')
     formatted_metrics = [
