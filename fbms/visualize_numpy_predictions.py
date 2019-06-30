@@ -22,6 +22,14 @@ def main():
 
     for mask_file in tqdm(list(args.input_dir.rglob('*' + args.np_extension))):
         all_frames_mask = np.load(mask_file)
+        if isinstance(all_frames_mask, np.lib.npyio.NpzFile):
+            # Segmentation saved with savez_compressed; ensure there is only
+            # one item in the dict and retrieve it.
+            keys = list(all_frames_mask.keys())
+            assert len(keys) == 1, (
+                'Numpy file (%s) contained dict with multiple items, not sure '
+                'which one to load.' % mask_file)
+            all_frames_mask = all_frames_mask[keys[0]]
 
         num_frames = all_frames_mask.shape[0]
         for f in range(num_frames):
