@@ -4,3 +4,6 @@
 [submodule "git-state"]
 	path = git-state
 	url = git@github.com:achalddave/git-state.git
+[submodule "detectron_pytorch"]
+	path = detectron_pytorch
+	url = git@bitbucket.org:devalab/detectron-track-everything.git
