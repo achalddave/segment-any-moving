@@ -1,0 +1,12 @@
+general:
+  num_workers: 8
+  gpus: [0, 1, 2, 3]
+flow:
+  flownet2_dir: "/home/achald/research/misc/flow/flownet2"
+fbms:
+  images_highres:
+    test: "/data/all/FBMS/TestSet-highres"
+    train: "/data/all/FBMS/TrainingSet-highres"
+  flow_dir: "/scratch/achald/debug_release/fbms/flownet2_out/"
+davis: "TODO"
+ytvos: "TODO"
