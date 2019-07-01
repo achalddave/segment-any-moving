@@ -1,6 +1,6 @@
-import logging
-import subprocess
 from pathlib import Path
+
+from release.helpers.misc import subprocess_call
 
 
 def compute_flow_helper(config, input_dir, output_dir):
@@ -17,7 +17,5 @@ def compute_flow_helper(config, input_dir, output_dir):
         '--flownet2-dir', flownet2_dir,
         '--flownet2-model', 'kitti'
     ]
-    args = [str(x) for x in args]
     cmd = ['python', 'flow/compute_flow_sequences.py'] + args
-    logging.info('Command:\n%s', ' '.join(cmd).replace("--", "\\\n--"))
-    subprocess.check_call(cmd)
+    subprocess_call(cmd)
