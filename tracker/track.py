@@ -746,11 +746,14 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
         image_width (int)
         image_height (int)
     """
+    track_ids = {}  # Map track id to sequential numbers starting at 1
     # Map frame number to list of Detections
     detections_by_frame = collections.defaultdict(list)
     for track in tracks:
         for detection in track.detections:
             detections_by_frame[detection.timestamp].append(detection)
+        if track.id not in track_ids:
+            track_ids[track.id] = len(track_ids) + 1
 
     num_output_frames = math.floor(num_frames / output_numpy_every_kth) + 1
     logging.info(f'Num output frames for {output_numpy.stem}: '
@@ -767,7 +770,8 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
         frame_detections = sorted(frame_detections, key=lambda d: d.score)
         segmentation = np.zeros((image_height, image_width))
         for detection in frame_detections:
-            segmentation[detection.decoded_mask() != 0] = detection.track.id
+            segmentation[detection.decoded_mask() != 0] = (
+                track_ids[detection.track.id])
         full_segmentation[timestamp, :, :] = segmentation
     np.savez_compressed(output_numpy, segmentation=full_segmentation)
 
