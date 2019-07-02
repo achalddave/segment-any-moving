@@ -155,7 +155,7 @@ def main():
         output_dir=args.output_dir,
         tracking_params=tracking_params,
         frame_extension=args.extension,
-        save_video=True,
+        save_video=args.save_video,
         vis_dataset=args.vis_dataset,
         fps=args.fps,
         save_images=args.save_images,
