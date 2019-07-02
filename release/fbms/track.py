@@ -31,18 +31,21 @@ def main():
         fbms_split_root = Path(config['fbms']['root']) / split
         output_split = Path(output_dir) / split
         args = [
+            '--images-dir', fbms_split_root,
             '--init-detections-dir', init_detections,
             '--continue-detections-dir', continue_detections,
-            '--fbms-split-root', fbms_split_root,
             '--output-dir', output_split,
+            '--save-numpy', True,
+            '--save-images', False,
             '--bidirectional',
             '--score-init-min', 0.9,
             '--remove-continue-overlap', 0.1,
-            '--fps', 30
+            '--fps', 30,
+            '--filename-format', 'fbms',
+            '--save-video', config['tracker']['visualize'],
+            '--recursive'
         ]
-        if config['tracker']['visualize']:
-            args.append('--save-video')
-        cmd = ['python', 'fbms/two_detector_track.py'] + args
+        cmd = ['python', 'tracker/two_detector_track.py'] + args
         logging.info('\n\n###\n'
                      'Running tracker on FBMS %s\n'
                      '###\n\n', split)
