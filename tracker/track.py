@@ -756,8 +756,6 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
             track_ids[track.id] = len(track_ids) + 1
 
     num_output_frames = math.floor(num_frames / output_numpy_every_kth) + 1
-    logging.info(f'Num output frames for {output_numpy.stem}: '
-                 f'{num_output_frames}')
     full_segmentation = np.zeros((num_output_frames, image_height,
                                   image_width))
 
@@ -1002,8 +1000,6 @@ def track_and_visualize(detection_results,
         logging.info('Will output MOT style tracks to %s',
                      output_track_file)
     if should_output_numpy:
-        logging.info('Will output dense segmentation to numpy file: %s',
-                     output_numpy)
         assert output_numpy.suffix == '.npz', 'output_numpy must end in .npz'
 
     label_list = get_classes(vis_dataset)
