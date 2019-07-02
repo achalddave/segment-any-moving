@@ -7,3 +7,7 @@ def subprocess_call(cmd, log=True):
     if log:
         logging.info('Command:\n%s', ' '.join(cmd).replace("--", "\\\n--"))
     subprocess.check_call(cmd)
+
+
+def msg(message):
+    logging.info(f'\n\n###\n{message}\n###\n')

@@ -7,6 +7,7 @@ tracker:
   visualize: False
 fbms:
   root: "/data/all/FBMS"
+  eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
   images_highres:
     test: "/data/all/FBMS/TestSet-highres"
     train: "/data/all/FBMS/TrainingSet-highres"
