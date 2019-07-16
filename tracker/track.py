@@ -533,12 +533,12 @@ def visualize_detections(image,
 
         x0, y0, x1, y1 = [int(x) for x in detection.box]
         if vis_bbox:
-            cx, cy = detection.compute_center_box()
             image = vis.vis_bbox(
                 image, (x0, y0, x1 - x0, y1 - y0), color, thick=1)
 
         # Draw spatial distance threshold
         if tracking_params['draw_spatial_threshold']:
+            cx, cy = detection.compute_center_box()
             diagonal = (
                 detection.image.shape[0]**2 + detection.image.shape[1]**2)**0.5
             cv2.circle(
