@@ -172,9 +172,16 @@ def two_detector_track(images_dir,
     tracking_params = tracking_params.copy()
     init_detections = tracker.load_detectron_pickles(
         init_detections_dir, get_framenumber)
-    continue_detections = tracker.load_detectron_pickles(
-        continue_detections_dir,
-        get_framenumber)
+    if continue_detections_dir is None:
+        continue_detections = {}
+        for k, v in init_detections.items():
+            assert 'appearance_stream' in v
+            continue_detections[k] = v['appearance_stream']
+            del v['appearance_stream']
+    else:
+        continue_detections = tracker.load_detectron_pickles(
+            continue_detections_dir,
+            get_framenumber)
 
     new_init_min = 1.001
     merged_detections = merge_detections(
@@ -228,8 +235,10 @@ def main():
         '--continue-detections-dir',
         type=Path,
         help=('Contains pickle files of detections for each frame.These '
-              'detections are used only to continue tracks.'),
-        required=True)
+              'detections are used only to continue tracks. If not specified, '
+              'the continue detections are assumed to be stored in the '
+              'pickles in init_detections_dir, under the "appearance_stream" '
+              'key for each frame.'))
     parser.add_argument(
         '--remove-continue-overlap',
         type=float,
@@ -387,22 +396,28 @@ def main():
                 logging.info('%s already processed, skipping', subdir)
                 continue
             init_dir = args.init_detections_dir / subdir
-            continue_dir = args.continue_detections_dir / subdir
             if not init_dir.exists():
                 logging.warn(
                     'Skipping sequence %s: detections not found at %s', subdir,
                     init_dir)
                 continue
-            if not continue_dir.exists():
-                logging.warn(
-                    'Skipping sequence %s: detections not found at %s', subdir,
-                    continue_dir)
-                continue
+            if args.continue_detections_dir:
+                continue_dir = args.continue_detections_dir / subdir
+                if not continue_dir.exists():
+                    logging.warn(
+                        'Skipping sequence %s: detections not found at %s',
+                        subdir, continue_dir)
+                    continue
+
+            if args.continue_detections_dir:
+                continue_dir = args.continue_detections_dir / subdir
+            else:
+                continue_dir = None
 
             track_fn(
                 images_dir=args.images_dir / subdir,
                 init_detections_dir=args.init_detections_dir / subdir,
-                continue_detections_dir=args.continue_detections_dir / subdir,
+                continue_detections_dir=continue_dir,
                 output_video=output_video,
                 output_images_dir=output_images_dir,
                 output_merged_dir=output_merged,
