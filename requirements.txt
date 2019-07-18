@@ -13,3 +13,5 @@ packaging==19.*
 git+https://github.com/pdollar/coco.git#egg=pycocotools&subdirectory=PythonAPI
 cffi==1.12.*
 moviepy==1.0.0
+h5py==2.9.*
+easydict==1.9

@@ -21,6 +21,10 @@ fbms:
   # Clone from https://github.com/achalddave/fbms-evaluation
   eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
   output_dir: "release/outputs/fbms"
+davis16:
+  root: "/data/all/DAVIS/2016/"
+  splits: ['val']  # 'train', 'val', or 'trainval'
+  output_dir: "release/outputs/davis16"
 davis17:
   root: "/data/all/DAVIS/2017/"
   splits: ['val_moving']  # 'val_moving', 'val', 'test', 'test-dev'
