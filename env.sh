@@ -33,3 +33,6 @@ elif [[ "$1" == "deactivate" ]] ; then
     export PYTHONPATH=${PYTHONPATH//${_TRACK_PROJECT_DIR}/}
 fi
 unset _TRACK_PROJECT_DIR
+
+conda activate moving-things
+source .venv/bin/activate
