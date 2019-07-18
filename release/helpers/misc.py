@@ -1,12 +1,26 @@
 import logging
 import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).parent.parent.parent
 
 
-def subprocess_call(cmd, log=True):
-    cmd = [str(x) for x in cmd]
+def resolve_path(x):
+    if x.is_absolute():
+        x = ROOT / x
+    return x.resolve()
+
+
+def subprocess_call(cmd, log=True, **kwargs):
+    cmd = [
+        str(x) if not isinstance(x, Path) else str(resolve_path(x))
+        for x in cmd
+    ]
     if log:
         logging.info('Command:\n%s', ' '.join(cmd).replace("--", "\\\n--"))
-    subprocess.check_call(cmd)
+        if kwargs:
+            logging.info('subprocess.check_call kwargs:\n%s', kwargs)
+    subprocess.check_call(cmd, **kwargs)
 
 
 def msg(message):

@@ -5,7 +5,8 @@ from pathlib import Path
 
 from script_utils.common import common_setup
 
-from release.helpers.misc import subprocess_call
+from release.helpers.misc import msg, subprocess_call
+from release.davis17.compute_flow import link_splits
 
 
 def main():
@@ -20,18 +21,19 @@ def main():
     with open(args.config, 'r') as f:
         config = yaml.load(f)
 
-    output_dir = Path(config['fbms']['output_dir']) / 'tracks'
+    output_dir = Path(config['davis17']['output_dir']) / 'tracks'
     output_dir.mkdir(exist_ok=True, parents=True)
 
     common_setup(__file__, output_dir, args)
 
-    for split in config['fbms']['splits']:
+    split_dirs = link_splits(config)
+    for split in config['davis17']['splits']:
+        image_dir = split_dirs[split][0]
         init_detections = (
-            Path(config['fbms']['output_dir']) / 'detections' / split)
-        fbms_split_root = Path(config['fbms']['root']) / split
+            Path(config['davis17']['output_dir']) / 'detections' / split)
         output_split = Path(output_dir) / split
         args = [
-            '--images-dir', fbms_split_root,
+            '--images-dir', image_dir,
             '--init-detections-dir', init_detections,
             '--output-dir', output_split,
             '--save-numpy', True,
@@ -40,14 +42,12 @@ def main():
             '--score-init-min', 0.9,
             '--remove-continue-overlap', 0.1,
             '--fps', 30,
-            '--filename-format', 'fbms',
+            '--filename-format', 'frame',
             '--save-video', config['tracker']['visualize'],
             '--recursive'
         ]
         cmd = ['python', 'tracker/two_detector_track.py'] + args
-        logging.info('\n\n###\n'
-                     'Running tracker on FBMS %s\n'
-                     '###\n\n', split)
+        msg(f'Running tracker on DAVIS {split}')
         subprocess_call(cmd)
 
 

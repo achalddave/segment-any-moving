@@ -3,13 +3,13 @@ from pathlib import Path
 from release.helpers.misc import subprocess_call
 
 
-def compute_flow_helper(config, input_dir, output_dir):
+def compute_flow_helper(config, input_dir, output_dir, extension):
     flownet2_dir = Path(config['flow']['flownet2_dir'])
     args = [
         '--input-dir', input_dir,
         '--recursive',
         '--convert-to-angle-magnitude-png', 'on',
-        '--extension', '.png',
+        '--extension', extension,
         '--gpus'] + config['general']['gpus'] + [
         '--num-workers', config['general']['num_workers'],
         '--output-dir', output_dir,

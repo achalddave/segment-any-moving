@@ -5,15 +5,24 @@ flow:
   flownet2_dir: "/home/achald/research/misc/flow/flownet2"
 tracker:
   visualize: False
+model:
+  joint:
+    dir: "release/model/joint/"
+    step: 4999
+  objectness:
+    dir: "release/model/objectness/"
+    step: 89999
 fbms:
   root: "/data/all/FBMS"
-  eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
+  splits: ['TestSet'] # ['TrainingSet', 'TestSet']
   images_highres:
-    test: "/data/all/FBMS/TestSet-highres"
-    train: "/data/all/FBMS/TrainingSet-highres"
-  flow_dir: "/scratch/achald/debug_release/fbms/flownet2_out/"
-  appearance_output: "/data/achald/track/detectron-pytorch/e2e_mask_rcnn_R-50-FPN_1x/objectness-Jul14-16-38-46_compute-1-16.local_step/step89999/infer-simple-fbms/outputs/"
-  joint_output: "/data/achald/track/detectron-pytorch/e2e_mask_rcnn_R-50-FPN_1x_two_stream_adaptor_mask_rgb_only/davis16-instance-rgb+flownet2_freeze-rgb-flow-bodies-mask-head-outs_from-ytvos-strict-1076f32b_from-objectness-and-ft3dNov02-19-52-31/step4999/infer-simple-fbms/outputs/"
-  track_output: "/scratch/achald/debug_release/fbms/fbms_output/"
-davis: "TODO"
+    TestSet: "/data/all/FBMS/TestSet-highres"
+    TrainingSet: "/data/all/FBMS/TrainingSet-highres"
+  # Clone from https://github.com/achalddave/fbms-evaluation
+  eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
+  output_dir: "release/outputs/fbms"
+davis17:
+  root: "/data/all/DAVIS/2017/"
+  splits: ['val_moving']  # 'val_moving', 'val', 'test', 'test-dev'
+  output_dir: "release/outputs/davis17"
 ytvos: "TODO"

@@ -22,20 +22,22 @@ def main():
     with open(args.config, 'r') as f:
         config = yaml.load(f)
 
-    output_dir = Path(config['fbms']['flow_dir'])
+    output_dir = Path(config['fbms']['output_dir']) / 'flow'
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    common_setup('compute_fbms_flow', output_dir, args)
+    common_setup(__file__, output_dir, args)
     logging.debug('Config:\n%s', pprint.pformat(config))
 
-    for split in ['test', 'train']:
+    for split in config['fbms']['splits']:
         input_dir = config['fbms']['images_highres'][split]
-        split_full = 'TrainingSet' if split == 'train' else 'TestSet'
-        output_split = output_dir / split_full
+        output_split = output_dir / split
         logging.info("\n\n###\n"
                      "Computing flow on FBMS %s set.\n"
                      "###\n\n", split)
-        compute_flow_helper(config, input_dir, output_split)
+        compute_flow_helper(config,
+                            input_dir,
+                            output_split,
+                            extension='.png')
 
 
 if __name__ == "__main__":

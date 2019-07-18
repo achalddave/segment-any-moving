@@ -8,11 +8,11 @@ from script_utils.common import common_setup
 from release.helpers.misc import msg, subprocess_call
 
 
-def check_tracks(track_output):
-    for split in ['TrainingSet', 'TestSet']:
+def check_tracks(track_output, splits):
+    for split in splits:
         np_dir = track_output / split
         if not np_dir.exists():
-            raise ValueError(f'Did not find tracks in {train_dir}; '
+            raise ValueError(f'Did not find tracks in {np_dir}; '
                             f'did you run release/fbms/track.py?')
 
 
@@ -26,10 +26,10 @@ def check_dat(track_output, split):
 
 
 def evaluate_proposed(config):
-    track_output = Path(config['fbms']['track_output'])
-    check_tracks(track_output)
+    track_output = Path(config['fbms']['output_dir']) / 'tracks'
+    check_tracks(track_output, config['fbms']['splits'])
 
-    for split in ['TrainingSet', 'TestSet']:
+    for split in config['fbms']['splits']:
         np_dir = track_output / split
 
         cmd = [
@@ -45,10 +45,10 @@ def evaluate_proposed(config):
 
 
 def evaluate_official(config):
-    track_output = Path(config['fbms']['track_output'])
+    track_output = Path(config['fbms']['output_dir'] / 'tracks')
     check_tracks(track_output)
 
-    for split in ['TrainingSet', 'TestSet']:
+    for split in config['fbms']['splits']:
         np_dir = track_output / split
         dat_dir = np_dir / 'dat'
         if not check_dat(track_output, split):
@@ -87,7 +87,7 @@ def main():
     with open(args.config, 'r') as f:
         config = yaml.load(f)
 
-    output_dir = Path(config['fbms']['track_output'])
+    output_dir = Path(config['fbms']['output_dir']) / 'evaluation'
     output_dir.mkdir(exist_ok=True, parents=True)
 
     common_setup(__file__, output_dir, args)
