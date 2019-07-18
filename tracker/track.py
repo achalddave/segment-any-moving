@@ -755,7 +755,7 @@ def output_numpy_tracks(tracks, output_numpy, output_numpy_every_kth,
         if track.id not in track_ids:
             track_ids[track.id] = len(track_ids) + 1
 
-    num_output_frames = math.floor(num_frames / output_numpy_every_kth) + 1
+    num_output_frames = math.ceil(num_frames / output_numpy_every_kth)
     full_segmentation = np.zeros((num_output_frames, image_height,
                                   image_width))
 
