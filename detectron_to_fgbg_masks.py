@@ -137,7 +137,6 @@ def main():
     # without the log file.
     masks_output_dir = args.output_dir / 'masks'
     for sequence_dir, sequence_predictions in tqdm(all_predictions.items()):
-        print(len(sequence_predictions))
         relative_dir = sequence_dir.relative_to(args.detections_root)
         create_masks_sequence(
             sequence_predictions,
