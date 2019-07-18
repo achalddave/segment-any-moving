@@ -356,8 +356,14 @@ def main():
         args.extension = '.' + args.extension
 
     if args.recursive:
-        sequences = sorted(
-            set(x.parent for x in input_root.rglob('*' + args.extension)))
+        sequences = set(x.parent
+                        for x in input_root.rglob('*' + args.extension))
+        # Handle one-level of symlinks for ease of use.
+        for symlink_dir in input_root.iterdir():
+            print(symlink_dir)
+            if symlink_dir.is_symlink() and symlink_dir.is_dir():
+                sequences.update(
+                    x.parent for x in symlink_dir.rglob('*' + args.extension))
     else:
         sequences = sorted(input_root.iterdir())
 
