@@ -1,0 +1,15 @@
+natsort==5.*
+joblib==0.13.*
+torch==0.4.* -f https://download.pytorch.org/whl/cu91/stable
+pyyaml==3.*
+git+https://github.com/achalddave/python-script-utils.git#egg=script_utils
+six>=1.12
+matplotlib>=3.1.1
+pillow==5.1.*
+tqdm==4.23.*
+scipy==1.1.*
+scikit-image==0.13.*
+packaging==19.*
+git+https://github.com/pdollar/coco.git#egg=pycocotools&subdirectory=PythonAPI
+cffi==1.12.*
+moviepy==1.0.0
