@@ -317,7 +317,7 @@ def main():
             sequence = groundtruth_path.parent.stem
 
         # (num_frames, height, width)
-        prediction_all_frames = np.load(prediction_path)
+        prediction_all_frames = np.load(str(prediction_path))
         if isinstance(prediction_all_frames, np.lib.npyio.NpzFile):
             # Segmentation saved with savez_compressed; ensure there is only
             # one item in the dict and retrieve it.
