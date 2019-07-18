@@ -4,3 +4,4 @@ __pycache__
 *.mp4
 release/outputs/
 .venv
+.vscode
