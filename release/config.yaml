@@ -12,8 +12,8 @@ model:
   joint_no_ytvos:
     dir: "release/model/joint_no_ytvos"
     step: 1999
-  objectness:
-    dir: "release/model/objectness/"
+  appearance:
+    dir: "release/model/appearance/"
     step: 89999
 fbms:
   root: "/data/all/FBMS"

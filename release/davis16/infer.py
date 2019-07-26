@@ -42,16 +42,16 @@ def main():
 
         joint_config, joint_model = get_config_ckpt(
             config['model']['joint']['dir'], config['model']['joint']['step'])
-        objectness_config, objectness_model = get_config_ckpt(
-            config['model']['objectness']['dir'],
-            config['model']['objectness']['step'])
+        appearance_config, appearance_model = get_config_ckpt(
+            config['model']['appearance']['dir'],
+            config['model']['appearance']['step'])
 
         cmd = ['python', 'tools/infer_simple.py']
         args = [
             '--cfg', joint_config,
             '--num_classes', 2,
             '--load_ckpt', joint_model,
-            '--load_appearance_ckpt', objectness_model,
+            '--load_appearance_ckpt', appearance_model,
             '--set', 'MODEL.MERGE_WITH_APPEARANCE.ENABLED', 'True',
             '--image_dirs', image_dir, flow_dir,
             '--input_type', 'rgb', 'flow',
