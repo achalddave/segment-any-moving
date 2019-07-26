@@ -9,6 +9,9 @@ model:
   joint:
     dir: "release/model/joint/"
     step: 4999
+  joint_no_ytvos:
+    dir: "release/model/joint_no_ytvos"
+    step: 1999
   objectness:
     dir: "release/model/objectness/"
     step: 89999
@@ -31,4 +34,12 @@ davis17:
   root: "/data/all/DAVIS/2017/"
   splits: ['moving_val']  # 'moving_val', 'val', 'test', 'test-dev'
   output_dir: "release/outputs/davis17"
-ytvos: "TODO"
+ytvos:
+  # Contains subdirectories 'train', 'train_all_frames'
+  #   Each subdirectory should contain 'Annotations' and 'JPEGImages'
+  #   subdirectories.
+  root: "/scratch/achald/ytvos"
+  # 'moving_val', 'moving_train', 'train', 'valid', 'test'
+  splits: ['moving_val']
+  output_dir: "release/outputs/ytvos"
+  # TODO: Use joint model without YTVOS here.
