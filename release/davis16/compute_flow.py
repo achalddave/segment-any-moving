@@ -65,7 +65,10 @@ def main():
         input_dir = split_dirs[split][0]
         output_split = flow_output / split
         msg("Computing flow on DAVIS 2016 %s set.")
-        compute_flow_helper(config, input_dir, output_split, extension='.jpg')
+        compute_flow_helper(config,
+                            input_dir,
+                            output_split,
+                            extensions=['.jpg'])
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ def main():
         compute_flow_helper(config,
                             input_dir,
                             output_split,
-                            extension='.png')
+                            extensions=['.png'])
 
 
 if __name__ == "__main__":

@@ -3,13 +3,23 @@ from pathlib import Path
 from release.helpers.misc import subprocess_call
 
 
-def compute_flow_helper(config, input_dir, output_dir, extension):
+def compute_flow_helper(config,
+                        input_dir,
+                        output_dir,
+                        extensions=None,
+                        recursive=True):
     flownet2_dir = Path(config['flow']['flownet2_dir'])
+
+    if isinstance(extensions, (list, tuple)):
+        extensions = ' '.join(extensions)
+
+    maybe_recursive = ['--recursive'] if recursive else []
+    maybe_extensions = ['--extensions', extensions] if extensions else []
     args = [
-        '--input-dir', input_dir,
-        '--recursive',
-        '--convert-to-angle-magnitude-png', 'on',
-        '--extension', extension,
+        '--input-dir', input_dir
+        ] + maybe_recursive + [
+        '--convert-to-angle-magnitude-png', 'on'
+        ] + maybe_extensions + [
         '--gpus'] + config['general']['gpus'] + [
         '--num-workers', config['general']['num_workers'],
         '--output-dir', output_dir,

@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 from flow.convert_flo_png import convert_flo, convert_flo_pavel_matlab
 from utils.log import setup_logging
+from utils.misc import IMG_EXTENSIONS
 
 
 @contextlib.contextmanager
@@ -300,10 +301,10 @@ def main():
         '--recursive',
         action='store_true',
         help="""Search recursively in input-dir for sequences. Any directory
-                containing a file with extension specified by --extension is
+                containing a file with extension specified by --extensions is
                 treated as a sequence directory. NOTE: Does not support
                 symlinked directories.""")
-    parser.add_argument('--extension', default='.png')
+    parser.add_argument('--extensions', nargs='*', default=IMG_EXTENSIONS)
     parser.add_argument(
         '--convert-to-angle-magnitude-png',
         choices=['off', 'on', 'pavel-matlab'],
@@ -352,17 +353,20 @@ def main():
     setup_logging(logging_path)
     logging.info('Args:\n%s', vars(args))
 
-    if args.extension[0] != '.':
-        args.extension = '.' + args.extension
+    args.extensions = [
+        x if x[0] == '.' else ('.' + x) for x in args.extensions
+    ]
+
+    def is_valid(path):
+        return any(path.name.endswith(y) for y in args.extensions)
 
     if args.recursive:
-        sequences = set(x.parent
-                        for x in input_root.rglob('*' + args.extension))
+        sequences = set(x.parent for x in input_root.rglob('*') if is_valid(x))
         # Handle one-level of symlinks for ease of use.
         for symlink_dir in input_root.iterdir():
             if symlink_dir.is_symlink() and symlink_dir.is_dir():
-                sequences.update(
-                    x.parent for x in symlink_dir.rglob('*' + args.extension))
+                sequences.update(x.parent for x in symlink_dir.rglob('*')
+                                 if is_valid(x))
     else:
         sequences = sorted(input_root.iterdir())
 
