@@ -175,7 +175,11 @@ def two_detector_track(images_dir,
     if continue_detections_dir is None:
         continue_detections = {}
         for k, v in init_detections.items():
-            assert 'appearance_stream' in v
+            assert 'appearance_stream' in v, (
+                f"Could not find appearance stream detections in "
+                f"{init_detections_dir}. Did you pass --load_appearance_ckpt "
+                f"when running infer_simple.py, or specify `--model joint` "
+                f"when running release/custom/infer.py?")
             continue_detections[k] = v['appearance_stream']
             del v['appearance_stream']
     else:
