@@ -813,8 +813,9 @@ def visualize_tracks(tracks,
 
     if output_video is None:
         assert output_dir is not None
-        for t, image_path in tqdm(
-                enumerate(frame_paths), disable=not progress):
+        for t, image_path in tqdm(enumerate(frame_paths),
+                                  disable=not progress,
+                                  desc='Visualizing images'):
             image = PIL.Image.fromarray(visualize_image(t))
             image.save(output_dir / (image_path.name + '.png'))
         return
@@ -833,7 +834,9 @@ def visualize_tracks(tracks,
             fps=output_video_fps,
             ffmpeg_params=ffmpeg_params) as writer:
         for t, image_path in enumerate(
-                tqdm(frame_paths, disable=not progress)):
+                tqdm(frame_paths,
+                     disable=not progress,
+                     desc='Visualizing video')):
             visualized = visualize_image(t)
             if output_dir is not None:
                 image = PIL.Image.fromarray(visualized)
