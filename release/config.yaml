@@ -22,11 +22,13 @@ fbms:
   eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
   output_dir: "release/outputs/fbms"
 davis16:
+  # Contains subdirectories 'Annotations', 'JPEGImages', 'ImageSets'
   root: "/data/all/DAVIS/2016/"
   splits: ['val']  # 'train', 'val', or 'trainval'
   output_dir: "release/outputs/davis16"
 davis17:
+  # Contains subdirectories 'Annotations', 'JPEGImages', 'ImageSets'
   root: "/data/all/DAVIS/2017/"
-  splits: ['val_moving']  # 'val_moving', 'val', 'test', 'test-dev'
+  splits: ['moving_val']  # 'moving_val', 'val', 'test', 'test-dev'
   output_dir: "release/outputs/davis17"
 ytvos: "TODO"

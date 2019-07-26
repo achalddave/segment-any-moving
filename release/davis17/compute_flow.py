@@ -12,15 +12,15 @@ from release.helpers.misc import msg, subprocess_call
 
 
 def link_splits(config):
-    assert all(x in {'val_moving', 'test', 'test-dev', 'val', 'train'}
+    assert all(x in {'moving_val', 'test', 'test-dev', 'val', 'train'}
                for x in config['davis17']['splits'])
     output_root = Path(config['davis17']['output_dir'])
     davis_root = Path(config['davis17']['root'])
 
     split_dirs = {}
     for split in config['davis17']['splits']:
-        if split == 'val_moving':
-            moving_path = Path(__file__).parent / 'val_moving_sequences.txt'
+        if split == 'moving_val':
+            moving_path = Path(__file__).parent / 'moving_val_sequences.txt'
             with open(moving_path, 'r') as f:
                 sequences = [x.strip() for x in f]
         else:
