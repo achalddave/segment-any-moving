@@ -2,7 +2,7 @@ general:
   num_workers: 8
   gpus: [0, 1, 2, 3]
 flow:
-  flownet2_dir: "/path/to/flownet2/repo"  # ***EDIT THIS***
+  flownet2_dir: "/home/achald/research/misc/flow/flownet2"
 tracker:
   visualize: False
 model:
@@ -19,29 +19,29 @@ model:
     dir: "release/model/motion/"
     step: 9999
 fbms:
-  root: "/path/to/FBMS/data/"  # ***EDIT THIS***
+  root: "/data/all/FBMS"
   splits: ['TestSet'] # ['TrainingSet', 'TestSet']
   images_highres:
-    TestSet: "/path/to/FBMS-TestSet-highres-images"  # ***EDIT THIS***
-    TrainingSet: "/path/to/FBMS-TrainingSet-highres-images"  # ***EDIT THIS***
+    TestSet: "/data/all/FBMS/TestSet-highres"
+    TrainingSet: "/data/all/FBMS/TrainingSet-highres"
   # Clone from https://github.com/achalddave/fbms-evaluation
-  eval_dir: "/path/to/fbms-evaluation-code/"  # ***EDIT THIS***
+  eval_dir: "/home/achald/research/misc/datasets/fbms/fbms-eval_fixed/evalcode/"
   output_dir: "release/outputs/fbms"
 davis16:
   # Contains subdirectories 'Annotations', 'JPEGImages', 'ImageSets'
-  root: "/path/to/DAVIS/2016/data"  # ***EDIT THIS***
+  root: "/data/all/DAVIS/2016/"
   splits: ['val']  # 'train', 'val', or 'trainval'
   output_dir: "release/outputs/davis16"
 davis17:
   # Contains subdirectories 'Annotations', 'JPEGImages', 'ImageSets'
-  root: "/path/to/DAVIS/2017/data"  # ***EDIT THIS***
+  root: "/data/all/DAVIS/2017/"
   splits: ['moving_val']  # 'moving_val', 'val', 'test', 'test-dev'
   output_dir: "release/outputs/davis17"
 ytvos:
   # Contains subdirectories 'train', 'train_all_frames'
   #   Each subdirectory should contain 'Annotations' and 'JPEGImages'
   #   subdirectories.
-  root: "/path/to/ytvos/data"  # ***EDIT THIS***
+  root: "/scratch/achald/ytvos"
   # 'moving_val', 'moving_train', 'train', 'valid', 'test'
   splits: ['moving_val']
   output_dir: "release/outputs/ytvos"
