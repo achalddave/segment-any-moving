@@ -95,19 +95,28 @@ def main():
         if symlink_dir.is_symlink() and symlink_dir.is_dir():
             images.extend(
                 [x for x in symlink_dir.rglob('*' + args.extension)])
-    image_subdirs = sorted(set(
-        x.parent.relative_to(args.images_dir) for x in images))
+    image_subdirs = sorted(
+        set(x.resolve().parent.relative_to(args.images_dir) for x in images))
     for subdir in tqdm(image_subdirs):
         output_numpy = None
         output_images_dir = None
         output_video = None
+
+        output_dir = args.output_dir / subdir
+
         if args.save_numpy:
-            output_numpy = args.output_dir / subdir.with_suffix('.npz')
+            if subdir == Path('.'):
+                output_numpy = output_dir / 'tracked.npz'
+            else:
+                output_numpy = output_dir / subdir.with_suffix('.npz')
         if args.save_images:
             output_images_dir = args.output_dir / subdir / 'images'
             output_images_dir.mkdir(exist_ok=True, parents=True)
         if args.save_video:
-            output_video = args.output_dir / subdir.with_suffix('.mp4')
+            if subdir == Path('.'):
+                output_video = output_dir / 'tracked.mp4'
+            else:
+                output_video = output_dir / subdir.with_suffix('.mp4')
 
         if all(x is None or x.exists()
                for x in (output_numpy, output_images_dir, output_video)):
