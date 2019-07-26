@@ -15,6 +15,9 @@ model:
   appearance:
     dir: "release/model/appearance/"
     step: 89999
+  motion:
+    dir: "release/model/motion/"
+    step: 9999
 fbms:
   root: "/data/all/FBMS"
   splits: ['TestSet'] # ['TrainingSet', 'TestSet']
