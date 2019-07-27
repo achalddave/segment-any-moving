@@ -1,5 +1,7 @@
 # Towards Segmenting Anything That Moves
 
+[<img src="http://www.achaldave.com/projects/anything-that-moves/videos/ZXN6A-tracked-with-objectness-trimmed.gif" width="32%" />](http://www.achaldave.com/projects/anything-that-moves/videos/ZXN6A-tracked-with-objectness-trimmed.mp4)[<img src="http://www.achaldave.com/projects/anything-that-moves/videos/c95cd17749.gif" width="32%" />](http://www.achaldave.com/projects/anything-that-moves/videos/c95cd17749.mp4)[<img src="http://www.achaldave.com/projects/anything-that-moves/videos/e0bdb5dfae.gif" width="32%" />](http://www.achaldave.com/projects/anything-that-moves/videos/e0bdb5dfae.mp4)
+
 [[Pre-print](https://arxiv.org/abs/1902.03715)] [[Website](http://www.achaldave.com/projects/anything-that-moves/)]
 
 [Achal Dave](http://www.achaldave.com/), [Pavel Tokmakov](http://thoth.inrialpes.fr/people/tokmakov/), [Deva Ramanan](http://www.cs.cmu.edu/~deva/)
