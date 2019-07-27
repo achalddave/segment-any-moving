@@ -40,7 +40,9 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__.split('\n')[0] if __doc__ else '',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('output_stage', choices=['detection', 'tracking'])
+    parser.add_argument('output_stage',
+                        choices=['detection', 'tracking'],
+                        default='detection')
     parser.add_argument('--config', default=Path('./release/config.yaml'))
 
     args = parser.parse_args()

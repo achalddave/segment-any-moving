@@ -17,9 +17,9 @@ def subprocess_call(cmd, log=True, **kwargs):
         for x in cmd
     ]
     if log:
-        logging.info('Command:\n%s', ' '.join(cmd).replace("--", "\\\n--"))
+        logging.debug('Command:\n%s', ' '.join(cmd).replace("--", "\\\n--"))
         if kwargs:
-            logging.info('subprocess.check_call kwargs:\n%s', kwargs)
+            logging.debug('subprocess.check_call kwargs:\n%s', kwargs)
     subprocess.check_call(cmd, **kwargs)
 
 

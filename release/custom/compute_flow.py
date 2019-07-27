@@ -1,7 +1,6 @@
 import argparse
 import logging
 import pprint
-import subprocess
 import yaml
 from pathlib import Path
 
@@ -27,7 +26,8 @@ def main():
         config = yaml.load(f)
 
     args.output_dir.mkdir(exist_ok=True, parents=True)
-    common_setup(__file__, args.output_dir, args)
+    common_setup(__file__, args.output_dir)
+    logging.debug('Args:\n%s', pprint.pformat(vars(args)))
     logging.debug('Config:\n%s', pprint.pformat(config))
 
     msg(f"Computing flow on {args.frames_dir}.")

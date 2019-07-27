@@ -16,12 +16,12 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--config', default=Path('./release/config.yaml'))
     parser.add_argument(
-        '--with-ytvos-train',
+        '--without-ytvos-train',
         action='store_true',
-        help=("By default, we run tracking on outputs from a model that was "
-              "not trained on YTVOS for fair evaluation of generalization. If "
-              "--with-ytvos-train is specified, infer with model that uses "
-              "YTVOS for training."))
+        help=("By default, we infer with model that was trained on YTVOS. "
+              "For fair evaluation of generalization, we use a model without "
+              "YTVOS training in our manuscript. Set this to True to use "
+              "the model without YTVOS training."))
 
     args = parser.parse_args()
 
@@ -29,10 +29,10 @@ def main():
         config = yaml.load(f)
 
     output_dir = Path(config['ytvos']['output_dir']) / 'tracks'
-    if args.with_ytvos_train:
-        output_dir = output_dir / 'with_ytvos'
-    else:
+    if args.without_ytvos_train:
         output_dir = output_dir / 'without_ytvos'
+    else:
+        output_dir = output_dir / 'with_ytvos'
     output_dir.mkdir(exist_ok=True, parents=True)
 
     common_setup(__file__, output_dir, args)

@@ -1,10 +1,12 @@
 import argparse
+import logging
+import pprint
 import yaml
 from pathlib import Path
 
 from script_utils.common import common_setup
 
-from release.helpers.misc import subprocess_call
+from release.helpers.misc import msg, subprocess_call
 
 
 def get_config_ckpt(model_dir, step):
@@ -47,7 +49,8 @@ def main():
 
     args = parser.parse_args()
     args.output_dir.mkdir(exist_ok=True, parents=True)
-    common_setup(__file__, args.output_dir, args)
+    common_setup(__file__, args.output_dir)
+    logging.debug('Args:\n%s', pprint.pformat(vars(args)))
 
     detectron_dir = (
         Path(__file__).resolve().parent.parent.parent / 'detectron_pytorch')
@@ -76,6 +79,8 @@ def main():
         image_dirs = ['--image_dirs', args.flow_dir]
         input_type = ['--input_type', 'flow']
 
+    msg(f'Running {args.model} model on {image_dirs[1].resolve()}')
+
     cmd = ['python', 'tools/infer_simple.py']
     args = ([
         '--cfg', model_config,
@@ -86,6 +91,7 @@ def main():
         + input_type + [
         '--save_images', args.visualize,
         '--output_dir', args.output_dir,
+        '--quiet',
         '--recursive'])
     subprocess_call(cmd + args, cwd=str(detectron_dir))
 

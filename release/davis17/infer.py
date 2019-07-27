@@ -57,6 +57,7 @@ def main():
             '--input_type', 'rgb', 'flow',
             '--save_images', False,
             '--output_dir', output_dir / split,
+            '--quiet',
             '--recursive'
         ]
         subprocess_call(cmd + args, cwd=str(detectron_dir))

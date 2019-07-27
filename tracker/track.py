@@ -24,6 +24,7 @@ from utils.colors import colormap
 from utils.datasets import get_classes
 from utils.distance import chi_square_distance  # , intersection_distance
 from utils.log import setup_logging
+from utils.misc import IMG_EXTENSIONS
 
 
 class Detection():
@@ -984,7 +985,7 @@ def track_and_visualize(detection_results,
                         images_dir,
                         tracking_params,
                         get_framenumber,
-                        frame_extension,
+                        frame_extensions,
                         vis_dataset=None,
                         output_numpy=None,
                         output_numpy_every_kth=1,
@@ -1007,8 +1008,14 @@ def track_and_visualize(detection_results,
 
     label_list = get_classes(vis_dataset)
 
+    for extension in frame_extensions:
+        if (images_dir / (frames[0] + extension)).exists():
+            break
+    else:
+        raise ValueError(f"Could not find image with any extension at "
+                         f"{images_dir / frames[0]}")
     frame_paths = [
-        images_dir / (frame + frame_extension) for frame in frames
+        images_dir / (frame + extension) for frame in frames
     ]
     all_tracks = track(frame_paths,
                        [detection_results[frame] for frame in frames],
@@ -1056,7 +1063,7 @@ def main():
         '--output-track-file',
         type=Path,
         help='Optional; path to output MOT17 style tracking output.')
-    parser.add_argument('--extension', default='.png')
+    parser.add_argument('--extensions', nargs='*', default=IMG_EXTENSIONS)
     parser.add_argument(
         '--dataset', default='coco', choices=['coco', 'objectness'])
     parser.add_argument(
@@ -1127,7 +1134,7 @@ def main():
                         args.images_dir,
                         tracking_params,
                         get_framenumber,
-                        args.extension,
+                        args.extensions,
                         vis_dataset=args.dataset,
                         output_images_dir=args.output_images_dir,
                         output_video=args.output_video,

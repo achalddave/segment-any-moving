@@ -9,7 +9,7 @@ from tqdm import tqdm
 import utils.log as log_utils
 from tracker.track import (
     create_tracking_parser, load_detectron_pickles, track_and_visualize)
-from utils.misc import parse_bool
+from utils.misc import glob_ext, parse_bool, IMG_EXTENSIONS
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
         default=1)
     parser.add_argument('--save-video', type=parse_bool, default=True)
     parser.add_argument('--fps', default=30, type=float)
-    parser.add_argument('--extension', default='.png')
+    parser.add_argument('--extensions', nargs='*', default=IMG_EXTENSIONS)
     parser.add_argument(
         '--dataset', default='coco', choices=['coco', 'objectness'])
     parser.add_argument(
@@ -44,6 +44,7 @@ def main():
               '"sequence_frame": frame number is separated by an underscore, '
               '"sequence-frame": frame number is separated by a dash, '
               '"fbms": assume fbms style frame numbers'))
+    parser.add_argument('--quiet', action='store_true')
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -57,9 +58,8 @@ def main():
         args.output_dir / 'tracker.log')
     output_log_file.parent.mkdir(exist_ok=True, parents=True)
     log_utils.setup_logging(output_log_file)
-    logging.info('Printing source code to logging file')
-    with open(__file__, 'r') as f:
-        logging.debug(f.read())
+    if args.quiet:
+        logging.root.setLevel(logging.WARN)
 
     logging.info('Args: %s', pprint.pformat(vars(args)))
     logging.info('Tracking params: %s', pprint.pformat(tracking_params))
@@ -87,9 +87,10 @@ def main():
         raise ValueError(
             'Unknown --filename-format: %s' % args.filename_format)
 
-    if args.extension[0] != '.':
-        args.extension = '.' + args.extension
-    images = list(args.images_dir.rglob('*' + args.extension))
+    args.extensions = [x if x[0] == '.' else '.' + x for x in args.extensions]
+
+    images = glob_ext(args.images_dir, args.extensions, recursive=True)
+
     # Handle one-level of symlinks for ease of use.
     for symlink_dir in args.images_dir.iterdir():
         if symlink_dir.is_symlink() and symlink_dir.is_dir():

@@ -1,6 +1,25 @@
 import argparse
+from itertools import chain
+from pathlib import Path
 
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm']
+
+
+def glob_ext(path, extensions, recursive=False):
+    if not isinstance(path, Path):
+        path = Path(path)
+    if recursive:
+        # Handle one level of symlinks.
+        path_children = list(path.glob('*'))
+        all_files = list(path_children)
+        for x in path_children:
+            if x.is_dir():
+                all_files += x.rglob('*')
+    else:
+        all_files = path.glob('*')
+    return [
+        x for x in all_files if any(x.name.endswith(y) for y in extensions)
+    ]
 
 
 def is_image_file(filename):

@@ -14,11 +14,12 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 import numpy as np
 from natsort import natsorted
 from PIL import Image
+from script_utils.common import common_setup
 from tqdm import tqdm
 
 from flow.convert_flo_png import convert_flo, convert_flo_pavel_matlab
 from utils.log import setup_logging
-from utils.misc import IMG_EXTENSIONS
+from utils.misc import glob_ext, IMG_EXTENSIONS
 
 
 @contextlib.contextmanager
@@ -186,7 +187,7 @@ def compute_flownet2_flow(flo_input_outputs, logger, gpu,
 
 
 def compute_sequence_flow(input_dir, output_dir, flow_fn, flow_args, gpu_queue,
-                          logger_name, convert_png, remove_flo, extension):
+                          logger_name, convert_png, remove_flo, extensions):
     """
     Args:
         convert_png (str or False): How to convert .flo files to .png. Choices
@@ -204,8 +205,8 @@ def compute_sequence_flow(input_dir, output_dir, flow_fn, flow_args, gpu_queue,
         assert not remove_flo, (
             'remove_flo is only allowed if convert_png is set')
 
-    image_paths = natsorted(
-        list(input_dir.glob('*' + extension)), key=lambda x: x.stem)
+    image_paths = natsorted(glob_ext(input_dir, extensions, recursive=False),
+                            key=lambda x: x.stem)
     times = {}
     times['start'] = time.time()
     file_logger = logging.getLogger(logger_name)
@@ -321,6 +322,7 @@ def main():
               'CPU operations, like loading input/output lists, checking '
               'image dimensions, and converting .flo to .png while other '
               'workers use the GPU.'))
+    parser.add_argument('--quiet', action='store_true')
 
     flownet2_parser = parser.add_argument_group('Flownet2 params')
     flownet2_parser.add_argument(
@@ -347,26 +349,17 @@ def main():
     output_root.mkdir(parents=True, exist_ok=True)
 
     file_name = Path(__file__).stem
-    logging_path = str(
-        output_root /
-        (file_name + '.py.%s.log' % datetime.now().strftime('%b%d-%H-%M-%S')))
-    setup_logging(logging_path)
-    logging.info('Args:\n%s', vars(args))
-
-    args.extensions = [
-        x if x[0] == '.' else ('.' + x) for x in args.extensions
-    ]
-
-    def is_valid(path):
-        return any(path.name.endswith(y) for y in args.extensions)
+    log_level = logging.ERROR if args.quiet else logging.INFO
+    file_logger = common_setup(__file__,
+                               output_root,
+                               args,
+                               log_console_level=log_level)
 
     if args.recursive:
-        sequences = set(x.parent for x in input_root.rglob('*') if is_valid(x))
-        # Handle one-level of symlinks for ease of use.
-        for symlink_dir in input_root.iterdir():
-            if symlink_dir.is_symlink() and symlink_dir.is_dir():
-                sequences.update(x.parent for x in symlink_dir.rglob('*')
-                                 if is_valid(x))
+        sequences = sorted(
+            x.parent
+            for x in glob_ext(input_root, args.extensions, recursive=True)
+        )
     else:
         sequences = sorted(input_root.iterdir())
 
@@ -413,10 +406,10 @@ def main():
             'flow_fn': flow_fn,
             'flow_args': flow_args,
             'gpu_queue': gpu_queue,
-            'logger_name': logging_path,
+            'logger_name': file_logger.name,
             'convert_png': convert_png,
             'remove_flo': bool(convert_png),
-            'extension': args.extension
+            'extensions': args.extensions
         })
 
     list(

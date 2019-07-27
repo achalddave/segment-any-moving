@@ -1,4 +1,6 @@
 import argparse
+import logging
+import pprint
 import yaml
 from pathlib import Path
 
@@ -41,7 +43,8 @@ def main():
 
     args.output_dir.mkdir(exist_ok=True, parents=True)
 
-    common_setup(__file__, args.output_dir, args)
+    common_setup(__file__, args.output_dir)
+    logging.debug('Args:\n%s', pprint.pformat(vars(args)))
 
     if args.model == 'joint':
         detections_args = ['--init-detections-dir', args.detections_dir]
@@ -62,7 +65,8 @@ def main():
         '--bidirectional',
         '--score-init-min', 0.9,
         '--fps', args.fps,
-        '--filename-format', args.filename_format
+        '--filename-format', args.filename_format,
+        '--quiet'
         ] + extra_args
     cmd = ['python', script] + args
     msg(f'Running tracker')

@@ -20,7 +20,7 @@ import utils.log as log_utils
 from tracker import track as tracker
 from utils.detectron_outputs import standardized_detections
 from utils.fbms import utils as fbms_utils
-from utils.misc import parse_bool
+from utils.misc import glob_ext, parse_bool, IMG_EXTENSIONS
 
 
 def filter_scores(detection, threshold):
@@ -161,7 +161,7 @@ def two_detector_track(images_dir,
                        get_framenumber,
                        tracking_params,
                        remove_continue_overlap,
-                       extension='.jpg',
+                       extensions,
                        output_merged_dir=None,
                        output_numpy=None,
                        output_numpy_every_kth_frame=1,
@@ -208,7 +208,7 @@ def two_detector_track(images_dir,
         images_dir,
         tracking_params,
         get_framenumber,
-        extension,
+        extensions,
         vis_dataset='objectness',
         output_images_dir=output_images_dir,
         output_video=output_video,
@@ -265,7 +265,7 @@ def main():
               '--init-detections-dir or --continue-detections-dir '
               'detections.'))
     parser.add_argument('--fps', type=int, default=30)
-    parser.add_argument('--extension', default='.jpg')
+    parser.add_argument('--extensions', nargs='*', default=IMG_EXTENSIONS)
     parser.add_argument(
         '--vis-dataset',
         default='objectness',
@@ -297,6 +297,7 @@ def main():
         '--recursive',
         action='store_true',
         help='Look recursively in --images-dir for images.')
+    parser.add_argument('--quiet', action='store_true')
 
     tracking_params, remaining_argv = tracking_parser.parse_known_args()
     args = parser.parse_args(remaining_argv)
@@ -309,6 +310,8 @@ def main():
     output_log_file = log_utils.add_time_to_path(
         args.output_dir / 'tracker.log')
     log_utils.setup_logging(output_log_file)
+    if args.quiet:
+        logging.root.setLevel(logging.WARN)
     logging.info('Args:\n%s', pprint.pformat(vars(args)))
     logging.info('Tracking params:\n%s', pprint.pformat(tracking_params))
 
@@ -339,7 +342,7 @@ def main():
         get_framenumber=get_framenumber,
         tracking_params=tracking_params,
         remove_continue_overlap=args.remove_continue_overlap,
-        extension=args.extension,
+        extensions=args.extensions,
         output_numpy_every_kth_frame=args.save_numpy_every_kth_frame,
         fps=args.fps)
 
