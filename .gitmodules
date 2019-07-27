@@ -6,4 +6,4 @@
 	url = git@github.com:achalddave/git-state.git
 [submodule "detectron_pytorch"]
 	path = detectron_pytorch
-	url = git@bitbucket.org:devalab/detectron-track-everything.git
+	url = git@github.com:achalddave/segment-any-moving_detectron.git
