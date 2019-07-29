@@ -2,6 +2,5 @@ debug/
 __pycache__
 *@neomake*.py
 *.mp4
-release/outputs/
 .venv
 .vscode
