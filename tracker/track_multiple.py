@@ -98,21 +98,19 @@ def main():
         output_images_dir = None
         output_video = None
 
-        output_dir = args.output_dir / subdir
-
         if args.save_numpy:
             if subdir == Path('.'):
-                output_numpy = output_dir / 'tracked.npz'
+                output_numpy = args.output_dir / 'tracked.npz'
             else:
-                output_numpy = output_dir / subdir.with_suffix('.npz')
+                output_numpy = args.output_dir / subdir.with_suffix('.npz')
         if args.save_images:
             output_images_dir = args.output_dir / subdir / 'images'
             output_images_dir.mkdir(exist_ok=True, parents=True)
         if args.save_video:
             if subdir == Path('.'):
-                output_video = output_dir / 'tracked.mp4'
+                output_video = args.output_dir / 'tracked.mp4'
             else:
-                output_video = output_dir / subdir.with_suffix('.mp4')
+                output_video = args.output_dir / subdir.with_suffix('.mp4')
 
         if all(x is None or x.exists()
                for x in (output_numpy, output_images_dir, output_video)):
@@ -131,7 +129,7 @@ def main():
             args.images_dir / subdir,
             tracking_params,
             get_framenumber,
-            args.extension,
+            args.extensions,
             vis_dataset=args.dataset,
             output_images_dir=output_images_dir,
             output_video=output_video,

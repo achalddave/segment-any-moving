@@ -337,6 +337,7 @@ def main():
         raise ValueError(
             'Unknown --filename-format: %s' % args.filename_format)
 
+    args.extensions = [x if x[0] == '.' else '.' + x for x in args.extensions]
     track_fn = functools.partial(
         two_detector_track,
         get_framenumber=get_framenumber,
@@ -371,14 +372,7 @@ def main():
             output_numpy=output_numpy,
             progress=True)
     else:
-        if args.extension[0] != '.':
-            args.extension = '.' + args.extension
-        images = list(args.images_dir.rglob('*' + args.extension))
-        # Handle one-level of symlinks for ease of use.
-        for symlink_dir in args.images_dir.iterdir():
-            if symlink_dir.is_symlink() and symlink_dir.is_dir():
-                images.extend(
-                    [x for x in symlink_dir.rglob('*' + args.extension)])
+        images = glob_ext(args.images_dir, args.extensions, recursive=True)
         image_subdirs = sorted(set(
             x.parent.relative_to(args.images_dir) for x in images))
         for subdir in tqdm(image_subdirs):
