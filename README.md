@@ -8,7 +8,9 @@
 
 ## Setup
 
-1. Download models to release/models
+1. Download
+   [models](https://drive.google.com/file/d/1qckICZRzX_GBTJSRhn2NDMoJuVppgWUS/view?usp=sharing)
+   and extract them to release/models
 1. Install pytorch 0.4.0.
 1. Run `git submodule update --init`.
 1. Setup [detectron-pytorch](./detectron_pytorch).
