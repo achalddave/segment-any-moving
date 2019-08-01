@@ -91,11 +91,6 @@ def main():
 
     images = glob_ext(args.images_dir, args.extensions, recursive=True)
 
-    # Handle one-level of symlinks for ease of use.
-    for symlink_dir in args.images_dir.iterdir():
-        if symlink_dir.is_symlink() and symlink_dir.is_dir():
-            images.extend(
-                [x for x in symlink_dir.rglob('*' + args.extension)])
     image_subdirs = sorted(
         set(x.resolve().parent.relative_to(args.images_dir) for x in images))
     for subdir in tqdm(image_subdirs):
