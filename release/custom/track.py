@@ -28,10 +28,13 @@ def main():
         '--model', choices=['joint', 'appearance', 'motion'], default='joint')
     parser.add_argument(
         '--filename-format',
-        choices=['frame', 'sequence_frame', 'sequence-frame', 'fbms'],
+        choices=[
+            'frame', 'frameN', 'sequence_frame', 'sequence-frame', 'fbms'
+        ],
         required=True,
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
+              '"frameN": format <frame><number>, '
               '"sequence_frame": frame number is separated by an underscore, '
               '"sequence-frame": frame number is separated by a dash, '
               '"fbms": assume fbms style frame numbers'))

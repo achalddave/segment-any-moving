@@ -1068,10 +1068,13 @@ def main():
         '--dataset', default='coco', choices=['coco', 'objectness'])
     parser.add_argument(
         '--filename-format',
-        choices=['frame', 'sequence_frame', 'sequence-frame', 'fbms'],
+        choices=[
+            'frame', 'frameN', 'sequence_frame', 'sequence-frame', 'fbms'
+        ],
         default='frame',
         help=('Specifies how to get frame number from the filename. '
               '"frame": the filename is the frame number, '
+              '"frameN": format <frame><number>, '
               '"sequence_frame": frame number is separated by an underscore, '
               '"sequence-frame": frame number is separated by a dash, '
               '"fbms": assume fbms style frame numbers'))
@@ -1116,6 +1119,9 @@ def main():
 
     if args.filename_format == 'fbms':
         from utils.fbms.utils import get_framenumber
+    elif args.filename_format == 'frameN':
+        def get_framenumber(x):
+            return int(x.split('frame')[1])
     elif args.filename_format == 'sequence-frame':
         def get_framenumber(x):
             return int(x.split('-')[-1])
