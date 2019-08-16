@@ -32,6 +32,7 @@ def main():
 
     args = parser.parse_args()
 
+    args.output_dir.mkdir(exist_ok=True, parents=True)
     common_setup(__file__, args.output_dir, args)
 
     flow_dir = args.output_dir / 'flow'
