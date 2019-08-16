@@ -13,7 +13,9 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--frames-dir', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, required=True)
-    parser.add_argument('--model', choices=['joint', 'appearance', 'motion'])
+    parser.add_argument('--model',
+                        default='joint',
+                        choices=['joint', 'appearance', 'motion'])
     parser.add_argument(
         '--filename-format',
         choices=['frame', 'sequence_frame', 'sequence-frame', 'fbms'],
