@@ -356,10 +356,10 @@ def main():
                                log_console_level=log_level)
 
     if args.recursive:
-        sequences = sorted(
+        sequences = sorted({
             x.parent
             for x in glob_ext(input_root, args.extensions, recursive=True)
-        )
+        })
     else:
         sequences = sorted(input_root.iterdir())
 
