@@ -86,5 +86,5 @@ was trained without YTVOS, to evaluate generalization. To activate this, pass
 `release/ytvos/track.py`.
 
 ---
-<a name="footnote1">1</a>: This should contain all the requirements, but this was created manually so I may be missing some pip modules. If you run into an import error, try pip installing the module, and/or file an issue](https://github.com/achalddave/segment-any-moving/issues).
+<a name="footnote1">1</a>: This should contain all the requirements, but this was created manually so I may be missing some pip modules. If you run into an import error, try pip installing the module, and/or [file an issue](https://github.com/achalddave/segment-any-moving/issues).
 
