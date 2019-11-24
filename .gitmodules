@@ -1,9 +1,9 @@
 [submodule "utils/fbms"]
 	path = utils/fbms
-	url = git@bitbucket.org:devalab/fbms.git
+	url = https://bitbucket.org/devalab/fbms/
 [submodule "git-state"]
 	path = git-state
-	url = git@github.com:achalddave/git-state.git
+	url = https://github.com/achalddave/git-state
 [submodule "detectron_pytorch"]
 	path = detectron_pytorch
-	url = git@github.com:achalddave/segment-any-moving_detectron.git
+	url = https://github.com/achalddave/segment-any-moving_detectron/
