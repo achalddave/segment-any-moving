@@ -13,7 +13,7 @@
    and extract them to release/models
 1. Install pytorch 0.4.0.
 1. Run `git submodule update --init`.
-1. Setup [detectron-pytorch](./detectron_pytorch).
+1. Setup [detectron-pytorch](https://github.com/achalddave/segment-any-moving_detectron/).
 1. Setup [flownet2](https://github.com/lmb-freiburg/flownet2). If you just
 want to use the appearance stream, you can skip this step.
 1. Install requirements with `pip install -r requirements.txt`<sup>[1](#footnote1)</sup>.
